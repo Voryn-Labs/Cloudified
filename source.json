@@ -1,0 +1,41 @@
+{
+  "name": "Voryn Labs",
+  "identifier": "com.tinyredphoenix.Cloudified.source",
+  "subtitle": "Independent apps for iPhone",
+  "description": "Unsigned Voryn Labs releases for compatible sideloading tools. Sign with your own certificate or import into LiveContainer.",
+  "iconURL": "https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/App/Resources/Assets.xcassets/AppIcon.appiconset/CloudifiedIcon.png",
+  "sourceURL": "https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/source.json",
+  "tintColor": "#096E61",
+  "apps": [
+    {
+      "name": "Cloudified",
+      "bundleIdentifier": "com.vorynlabs.cloudified",
+      "developerName": "Voryn Labs",
+      "subtitle": "Original photo and video backup",
+      "localizedDescription": "Back up original photos and videos to Google Photos and Telegram with independent queues, progress and recovery. An unsigned Voryn Labs app; sign with your own certificate or import into LiveContainer.",
+      "iconURL": "https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/App/Resources/Assets.xcassets/AppIcon.appiconset/CloudifiedIcon.png",
+      "tintColor": "#096E61",
+      "category": "photo-video",
+      "versions": [
+        {
+          "version": "0.1",
+          "buildVersion": "27",
+          "marketingVersion": "0.1 (27)",
+          "date": "2026-10-16T15:04:14+00:00",
+          "localizedDescription": "Original photo and video backup by Voryn Labs. Sign the IPA with your preferred installer.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/ci-run-38920202426-untested/Cloudified-unsigned.ipa",
+          "size": 17791392,
+          "sha256": "be93ec0b1553836f80d52b044720287b08ecba6554675079660e7a6ccdc2f650",
+          "minOSVersion": "26.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSPhotoLibraryUsageDescription": "Cloudified requires photo library access to back up original quality photos and videos to Google Photos and Telegram."
+        }
+      }
+    }
+  ],
+  "news": []
+}

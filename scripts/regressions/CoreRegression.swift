@@ -1,0 +1,172 @@
+import Foundation
+@testable import CloudifiedCore
+
+func check(_ value: Bool, _ label: String) { precondition(value, label) }
+enum ProbeError: Error { case rollback }
+extension Ledger {
+    func rolledBackSnapshot(jobID: UUID) throws {
+        do {
+            try transaction {
+                try db.execute("UPDATE jobs SET state='confirmed' WHERE id=?", [jobID.sql])
+                _ = try snapshot()
+                throw ProbeError.rollback
+            }
+        } catch ProbeError.rollback {}
+    }
+    func logBudget() throws -> Int64 { try db.rows("SELECT byte_used AS n FROM log_budget WHERE id=1").first!.int("n") }
+    func ageRoutine() throws { try db.execute("UPDATE events SET occurred=0 WHERE critical=0") }
+    func truncateFailures() throws { try db.execute("DELETE FROM source_failures") }
+}
+struct Fixture {
+    let ledger: Ledger
+    let destination: Destination
+    let asset: AssetIdentity
+    let resource: ResourceRequirement
+    let jobID: UUID
+}
+func fixture(_ root: URL, provider: Provider = .google) async throws -> Fixture {
+    let ledger = try Ledger(databaseURL: root.appendingPathComponent(UUID().uuidString), version: "offline", revision: "unknown")
+    let destination = try await ledger.selectDestination(Destination(provider: provider, verifiedFingerprint: String(repeating: "1", count: 64)))
+    try await ledger.completeDestinationRecovery(destination.id)
+    let scan = try await ledger.beginScan()
+    let asset = try await ledger.registerAssets([AssetIdentity(localIdentifier: "host-boundary", generation: String(repeating: "a", count: 64), kind: .photo)], scanID: scan)[0]
+    try await ledger.completeScan(scan)
+    let resource = try ContentIdentity.resource(role: .still, originals: [OriginalContent(sha256: String(repeating: "b", count: 64), sha1: String(repeating: "c", count: 40), byteCount: 3, role: .still)])
+    let job = try await ledger.enqueue(assetID: asset.id, destinationID: destination.id, plan: ContentIdentity.plan(policyVersion: "host-boundary", resources: [resource]))
+    return Fixture(ledger: ledger, destination: destination, asset: asset, resource: resource, jobID: job)
+}
+func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
+    let run = UUID()
+    let job = try await f.ledger.claimNext(destinationID: f.destination.id, runID: run, now: now)!
+    try await f.ledger.applyPresence(.verifiedAbsent, jobID: job.id, resourceID: f.resource.id, runID: run)
+    _ = try await f.ledger.finishChecks(jobID: job.id, runID: run)
+    return try await f.ledger.beginAttempt(jobID: job.id, runID: run)
+}
+@main struct CoreRegression {
+    static func main() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let f = try await fixture(root), ledger = f.ledger
+        _ = try await ledger.snapshot()
+        let baseline = await ledger.snapshotPerformance()
+        for _ in 0..<50 {
+            try await ledger.appendEvent(.hashing, context: EventContext(origin: .source), decision: .proceed)
+            _ = try await ledger.snapshot()
+        }
+        try await ledger.unblockDestination(f.destination.id)
+        try await ledger.completeDestinationRecovery(f.destination.id)
+        _ = try await ledger.snapshot()
+        let after = await ledger.snapshotPerformance()
+        check(after.computed == baseline.computed && after.reused >= baseline.reused + 50, "diagnostics recomputed counts")
+        try await ledger.recordSourceFailure(assetID: f.asset.id, destinationIDs: [f.destination.id], error: SafeFailure(.sourceUnavailable, domain: .photos, cause: .sourceMissing), permanent: true)
+        check(try await ledger.snapshot().providers[0].photos?.failed == 1, "source failure cache stale")
+        try await ledger.truncateFailures()
+        check(try await ledger.snapshot().providers[0].photos?.failed == 0, "whole-table DELETE missed cache invalidation")
+        try await ledger.rolledBackSnapshot(jobID: f.jobID)
+        check(try await ledger.snapshot().providers[0].confirmed == 0, "rolled-back count escaped cache")
+        try await ledger.confirm(RemoteReceipt(destinationID: f.destination.id, tag: f.resource.tag, opaqueReference: Data([1]), kind: .uploaded), jobID: f.jobID, resourceID: f.resource.id)
+        check(try await ledger.snapshot().providers[0].confirmed == 1, "confirmation cache stale")
+        print("PASS actual snapshot cache: 50 diagnostic-only cache hits, source failure, truncate, rollback and confirmation invalidation")
+        let plan = try await ledger.job(f.jobID).plan
+        check(try await ledger.hasEnqueuedPlan(assetID: f.asset.id, destinationID: f.destination.id, coverageHash: plan.coverageHash), "matching plan missed")
+        check(try await !ledger.hasEnqueuedPlan(assetID: f.asset.id, destinationID: f.destination.id, coverageHash: String(repeating: "f", count: 64)), "changed plan skipped")
+        try await ledger.recordSourceFailure(assetID: f.asset.id, destinationIDs: [f.destination.id], error: SafeFailure(.timeout, domain: .photos, cause: .deadlineExceeded), permanent: false)
+        check(try await !ledger.hasEnqueuedPlan(assetID: f.asset.id, destinationID: f.destination.id, coverageHash: plan.coverageHash), "source failure hidden by plan shortcut")
+        try await ledger.truncateFailures()
+        let retrySource = try await fixture(root)
+        try await retrySource.ledger.recordSourceFailure(assetID: retrySource.asset.id, destinationIDs: [retrySource.destination.id], error: SafeFailure(.timeout, domain: .photos, cause: .deadlineExceeded), permanent: false)
+        check(try await retrySource.ledger.hasRetryableSourceFailures(), "unchanged scan hides transient source failure")
+        try await retrySource.ledger.setEnabled(retrySource.destination.id, false)
+        check(try await !retrySource.ledger.hasRetryableSourceFailures(), "disabled source failure forces replan")
+        try await retrySource.ledger.setEnabled(retrySource.destination.id, true)
+        try await retrySource.ledger.confirm(RemoteReceipt(destinationID: retrySource.destination.id, tag: retrySource.resource.tag, opaqueReference: Data([1]), kind: .uploaded), jobID: retrySource.jobID, resourceID: retrySource.resource.id)
+        check(try await !retrySource.ledger.hasRetryableSourceFailures(), "confirmed work forces replan")
+        print("PASS actual transient-source cursor invalidation: retryable work revisited; disabled and confirmed work excluded")
+        print("PASS actual planning lookup: exact alias/coverage required; changed plans and source failures cannot be skipped")
+        let priorityFailure = SafeFailure(.transfer, domain: .google, cause: .providerRejected)
+        try await ledger.appendEvent(.failure, context: EventContext(origin: .google), decision: .wait, severity: .error, failure: priorityFailure)
+        _ = try await ledger.pruneDiagnostics(byteBudget: 2_000)
+        check(try await ledger.logBudget() <= 2_000, "diagnostic byte budget exceeded")
+        let retained = try await ledger.logPage(limit: 200)
+        check(retained.events.contains { $0.failure == priorityFailure }, "routine logs displaced failure")
+        try await ledger.ageRoutine()
+        _ = try await ledger.pruneDiagnostics()
+        check(try await ledger.snapshot().providers[0].confirmed == 1, "pruning changed receipt-backed counts")
+        print("PASS actual diagnostic pruning: routine-first byte/age bounds, retained error, durable receipts unaffected")
+        let retry = try await fixture(root), now = Date()
+        for attempt in 1...3 {
+            let job = try await start(retry, now: now.addingTimeInterval(Double(attempt) * 1_000))
+            check(job.attempts == attempt, "attempt budget changed")
+            try await retry.ledger.failAttempt(jobID: job.id, failure: UploadFailure(SafeFailure(.timeout, domain: .google, cause: .deadlineExceeded), disposition: .retryable, acceptance: .definitelyNotAccepted), now: now)
+            let failed = try await retry.ledger.job(job.id)
+            if attempt < 3 {
+                let delay = failed.retryAt!.timeIntervalSince(now), base = attempt == 1 ? 30.0 : 120.0
+                check(delay >= base * 0.8 && delay <= base * 1.2, "incorrect transient backoff")
+            } else { check(failed.state == .failed, "more than three automatic attempts") }
+        }
+        let waiting = try await fixture(root)
+        _ = try await start(waiting)
+        try await waiting.ledger.failAttempt(jobID: waiting.jobID, failure: UploadFailure(SafeFailure(.connectivity, domain: .google, cause: .offline), disposition: .waiting, acceptance: .definitelyNotAccepted, didStartTransfer: false))
+        let resumed = try await start(waiting, now: Date().addingTimeInterval(1_000))
+        check(resumed.attempts == 1, "pre-send network wait burned attempt")
+        print("PASS actual retries: jittered 30/120s, three-attempt cap, pre-send suspension resumes same logical attempt")
+        let pair = try await fixture(root)
+        for failure in 1...3 {
+            let run = UUID()
+            _ = try await pair.ledger.claimNext(destinationID: pair.destination.id, runID: run, now: Date().addingTimeInterval(1_000))
+            try await pair.ledger.applyPresence(.unknown(SafeFailure(.reconciliation, domain: .google, cause: .pairingUnverified)), jobID: pair.jobID, resourceID: pair.resource.id, runID: run)
+            let deadline = try await pair.ledger.nextWake(destinationID: pair.destination.id)
+            try await pair.ledger.wakeWaiting(destinationID: pair.destination.id)
+            try await pair.ledger.unblockDestination(pair.destination.id)
+            check(try await pair.ledger.job(pair.jobID).state == .waiting, "automatic recovery re-polled incompatible pair")
+            if failure < 3 {
+                let expected = failure == 1 ? 60.0 : 300.0
+                check(deadline.map { abs($0.timeIntervalSinceNow - expected) < 2 } == true, "sparse pairing deadline lost")
+            } else { check(deadline == nil, "pairing timer persisted beyond bounded rechecks") }
+        }
+        try await pair.ledger.explicitRetry(jobID: pair.jobID)
+        check(try await pair.ledger.claimNext(destinationID: pair.destination.id, runID: UUID()) != nil, "explicit pair retry lost")
+        print("PASS actual Live Photo wait: sparse 60/300s rechecks then user action, generic wakes do not bypass deadlines, explicit retry remains possible")
+        let held = try await fixture(root, provider: .telegram)
+        let heldJob = try await start(held), transfer = UUID(), fileID = UUID()
+        let files = try FileLeaseStore(root: root.appendingPathComponent("held"), ledger: held.ledger)
+        let reserve = try await held.ledger.reserveStorage(bytes: 3, availableBytes: 2_000_000_000, transportOverhead: 0)
+        let ownership = try await files.beginExport(fileID: fileID)
+        try Data([1,2,3]).write(to: ownership.publishedURL)
+        let leased = try await files.registerPublished(fileID: fileID, byteCount: 3, reservationID: reserve.id, reexportable: true)
+        try await files.endExport(ownership)
+        try await files.hold(files: [leased], transferID: transfer, job: heldJob, resourceID: held.resource.id)
+        try await files.release(leased)
+        _ = try await held.ledger.snapshot()
+        try await held.ledger.saveProviderCheckpoint(ProviderCheckpoint(destinationID: held.destination.id,
+            tag: held.resource.tag, transferID: transfer, jobID: heldJob.id, phase: .uncertain, inputsTerminal: false, payload: Data([1])))
+        let protected = try await held.ledger.snapshot().providers[1]
+        check(protected.retainedTransfers == 1 && protected.protectedUnresolvedTransfers == 1, "retained inventory cache stale")
+        try await files.transportFinished(transfer)
+        check(try await held.ledger.snapshot().providers[1].retainedTransfers == 0, "terminal hold count stale")
+        print("PASS actual protected inventory: transfer/checkpoint and terminal-release count invalidation")
+        let epoch = try await ledger.beginRemoteIndex(destinationID: f.destination.id)
+        let entries = (0..<100).map { RemoteIndexEntry(tag: String(format: "%064x", $0), reference: Data([1])) }
+        try await ledger.addRemoteIndex(destinationID: f.destination.id, epoch: epoch, entries: entries)
+        check(try await !ledger.remoteIndex(destinationID: f.destination.id, epoch: epoch, tag: entries[0].tag).complete, "partial index claimed completeness")
+        do { try await ledger.addRemoteIndex(destinationID: f.destination.id, epoch: epoch, entries: entries + [entries[0]]); preconditionFailure("oversized page admitted") } catch {}
+        try await ledger.finishRemoteIndex(destinationID: f.destination.id, epoch: epoch)
+        check(try await ledger.remoteIndex(destinationID: f.destination.id, epoch: epoch, tag: entries[0].tag).complete, "index completion lost")
+        print("PASS actual remote index: bounded 100-entry page, 101 rejected, absence requires finished epoch")
+        try credentialKeyChecks()
+        try await nativeProtocolChecks()
+        try await censusChecks(root: root)
+        try await laneChecks(root: root)
+        try await auditBoundaryChecks(root: root)
+        try await networkPolicyChecks()
+        try await ownedRecoveryChecks(root: root)
+        try await telegramSettlementChecks(root: root)
+        awakeEligibilityChecks()
+        issueIdentificationChecks()
+        await presentationChecks()
+        await resolutionChecks()
+        try await issueMetadataChecks(root: root)
+        try await cleanupChecks(root: root)
+    }
+}

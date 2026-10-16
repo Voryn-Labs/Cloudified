@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/g8row/PhotosBackup.git",
+  "sourceCommit": "3c88269e18b9d4515e97d846c5816bd836285c3e",
+  "files": [
+    {
+      "sourcePath": "GPMC/Core/GPMCClient.swift",
+      "sourceSha256": "3bf0622b30d152e865668984d3a97de802d4b26afd519e0740c6378b08c81d70",
+      "vendoredPath": "App/Adapters/GooglePhotos/GPMCClient.swift",
+      "vendoredSha256": "5ca8eaa52737659f0f49b4b7de4f389e0e6b5681371fa8a09d9f03e56b3ff235"
+    },
+    {
+      "sourcePath": "GPMC/Core/Protobuf.swift",
+      "sourceSha256": "b06b6185352d0a3230f1deda4ced52a8eeb377de1239fde214620d0c2be1c9f8",
+      "vendoredPath": "App/Adapters/GooglePhotos/Protobuf.swift",
+      "vendoredSha256": "87da056eb2339e4b654f7d3380746dc92704b906e4a52794d14cef76fb2e40f1"
+    },
+    {
+      "sourcePath": "App/Sources/TokenExchange.swift",
+      "sourceSha256": "d76ffd0fdeeaaa2940efd349b67bb4eb68f7ef0102ebedc88f6de699b4a29f32",
+      "vendoredPath": "App/Adapters/GooglePhotos/GoogleTokenExchange.swift",
+      "vendoredSha256": "f5a219c8e9ec06bdd05f5943505b459f8fc0923254d0c757041885645ba118b5"
+    },
+    {
+      "sourcePath": "App/Sources/AccountConnectWebView.swift",
+      "sourceSha256": "e609cf9634c1b936dc2e0a4c7a1cdee1ca9216cfbbd8147e9b00e77e58f88c43",
+      "vendoredPath": "App/Presentation/Settings/GoogleAccountLoginView.swift",
+      "vendoredSha256": "13e3641fa8ed102651f397e4311c6bbe946889d10ee2ab8bfacc05b79d24ce9c"
+    }
+  ],
+  "patchNotes": "See docs/P4-REVIEW.md and docs/P4-R2.md. Architect token boundary applies injected network policy and removes raw server/network details while preserving cancellation and wire fields. Hashes record provenance, not protocol/runtime acceptance. P4-B adds bounded callback-terminal foreground HTTP/file I/O, same-token OpenID subject verification, Retry-After propagation and adapter-verified single-pass preparation. Original/non-quota commit/device/quality fields, hash query and native-pair metadata remain pinned. See docs/P4-B-INTEGRATION.md. P5/P6 disallow constrained networks consistently with the shared Low Data gate. Source pin unchanged; adapted-file digest refreshed. See docs/P5-P6-INTEGRATION.md. P8-R1 adapts the same pinned upstream isolated browser sign-in in Settings: strict cookie domain, foreground/deadline-bounded observer supplementation, sanitized failures and teardown. No source-pin or upload-protocol change; device login remains unverified. See docs/P8-FIRST-RUN.md. P9 adds closed diagnostic stages, safe transport/HTTP codes and app-owned ephemeral credential exchange sessions. Source revision and upload wire fields unchanged; updated adapted digests are source evidence only. See docs/P9-DIAGNOSTICS.md. P9-R2 separates JSON identity headers, reuses the freshly redeemed unbound token, and records closed authentication rejection names/stages. Upload wire fields and source pin unchanged; device acceptance pending. See docs/P9-R2.md. P9-R3 compares pinned PhotosBackup sign-in and adds same-token POST/Bearer tokeninfo fallback, bounded identity proof caching/reverification and removes raw provider error prose. Source pin and original/non-quota upload wire fields unchanged. See docs/P9-R3.md."
+}

@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Host regression checks of actual Core + source-extracted Telegram census.
+
+No network, accounts, Xcode download, iPhone build or app/demo records. Only native
+request/error boundaries use fixtures; all fixture databases are temporary.
+"""
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--sdk', type=Path)
+parser.add_argument('--build-dir', type=Path, default=ROOT / 'build/core-regressions')
+args = parser.parse_args()
+sdk = args.sdk or Path(subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip())
+out = args.build_dir.resolve()
+out.mkdir(parents=True, exist_ok=True)
+common = ['-swift-version', '6', '-sdk', str(sdk), '-module-cache-path', str(out / 'cache'),
+          '-I', str(out), '-Xcc', '-fmodule-map-file=' + str(ROOT / 'Packages/CloudifiedCore/Sources/CSQLite/module.modulemap')]
+def run(argv):
+    subprocess.run(argv, cwd=ROOT, check=True)
+for name, folder, libraries in [('CloudifiedDiagnostics', 'Diagnostics', []),
+                              ('CloudifiedCore', 'CloudifiedCore', ['-L', str(out), '-lCloudifiedDiagnostics'])]:
+    print('Compile actual ' + name, flush=True)
+    run(['swiftc', *common, '-enable-testing', '-emit-library', '-emit-module', '-parse-as-library',
+         '-module-name', name, *map(str, sorted((ROOT / 'Packages/CloudifiedCore/Sources' / folder).glob('*.swift'))),
+         *libraries, '-emit-module-path', str(out / (name + '.swiftmodule')), '-o', str(out / ('lib' + name + '.dylib'))])
+
+def section(text, start, end):
+    a = text.index(start)
+    return text[a:text.index(end, a)]
+telegram = (ROOT / 'App/Adapters/Telegram/TelegramProviderAdapter.swift').read_text()
+body = section(telegram, '    private struct Census {', '    private var census:')
+body += '    private var census: Census?\n'
+body += section(telegram, '    private func scanIndex(', '    func inspect(').replace('private func scanIndex', 'func scanIndex')
+(out / 'ActualCensus.swift').write_text('''import Foundation
+import CloudifiedCore
+actor CensusHarness {
+ let ledger:Ledger, client:CensusBoundary
+ var scanning=false, absenceCurrent=false
+ var censusRead:Int?, historyRevision:UInt64=0, epoch:UUID?, streamFailure:SafeFailure?
+ let statusContinuation=AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1)).continuation
+ init(_ ledger:Ledger,_ client:CensusBoundary){self.ledger=ledger;self.client=client}
+ func verifyChannel(_ id:Int64) async throws { precondition(id == -100) }
+ func incompleteHistory()->SafeFailure {SafeFailure(.reconciliation,domain:.tdlib,cause:.incompleteHistory)}
+ func invalidate(){historyRevision &+= 1}
+ func complete()->Bool {absenceCurrent}
+''' + body + '}\n')
+(out / 'ActualResolution.swift').write_text('''import Foundation
+import CloudifiedCore
+actor ResolutionHarness {
+''' + section(telegram, '    private enum Resolution:', '    private struct Pending {').replace('private enum Resolution', 'enum Resolution') + '''
+ struct Pending {
+  var resolution:Resolution?
+  var waiter:CheckedContinuation<Resolution,Never>?
+  var deadline:Task<Void,Never>?
+ }
+ var pending:[Int32:Pending] = [1:Pending()]
+ func set(_ value:Resolution){resolve(1,value)}
+ func result()->Resolution?{pending[1]?.resolution}
+''' + section(telegram, '    private func resolve(', '    func recover(') + '}\n')
+support = (ROOT / 'App/Adapters/System/ProviderSupport.swift').read_text()
+(out / 'Support.swift').write_text('''import Foundation
+import CloudifiedCore
+enum ProviderSupport {
+ static func safe(_ error:any Error,domain:ErrorDomain)->SafeFailure {
+  (error as? SafeFailure) ?? SafeFailure(.reconciliation,domain:domain,cause:.interrupted)
+ }
+''' + section(support, '    static func canonical<', '    static func fingerprint(')
+    + section(support, '    static func hex(', '    static func safe(')
+    + section(support, '    static func disposition(', '    /// Invalid evidence')
+    + section(support, '    static func context(', 'final class ProviderProgressPump:')
+    + support[support.index('final class ProviderProgressPump:'):] )
+session = (ROOT / 'App/Adapters/Telegram/TDLibSession.swift').read_text()
+(out / 'ActualProtocolRecovery.swift').write_text('''import Foundation
+import CloudifiedCore
+actor ProtocolRecoveryHarness {
+ enum CloseOutcome: Sendable {case acknowledged, unresolved, differentError}
+ var processingFailure:(any Error)? = TDLibError.responseLimitExceeded(.nodes)
+ var isTerminated=false
+ var clientID:Int32?=1
+ let outcome:CloseOutcome
+ init(_ outcome:CloseOutcome){self.outcome=outcome}
+ func close() async throws {
+  switch outcome {
+  case .acknowledged: isTerminated=true;clientID=nil;throw processingFailure!
+  case .unresolved: throw TDLibError.unresolvedClose("fixture")
+  case .differentError: isTerminated=true;clientID=nil;throw ProbeError.rollback
+  }
+ }
+ func acknowledged()->Bool {isTerminated && clientID == nil}
+''' + section(session, '    var restartableProtocolFailure: Bool {', '    public private(set) var connectionReady') + '}\n')
+client = (ROOT / 'App/Adapters/Telegram/TDLibClient.swift').read_text()
+(out / 'ActualNetworkPolicy.swift').write_text('''import Foundation
+actor NetworkPolicyHarness {
+ let session:NetworkPolicyBoundary
+ var isStarting=false, networkType="networkTypeNone"
+ var appliedNetworkType:String?
+ var networkPolicyTask:(id:UUID,task:Task<Void,any Error>)?
+ init(_ session:NetworkPolicyBoundary){self.session=session}
+ func desired()->String {networkType}
+''' + section(client, '    func setNetworkPolicy(', '    private func emitDiagnostic(') + '}\n')
+(out / 'ActualOwnedRecovery.swift').write_text('''import Foundation
+import CloudifiedCore
+actor OwnedRecoveryHarness {
+ let inputFiles:TelegramInputFiles, client:OwnedRecoveryBoundary
+ init(_ inputFiles:TelegramInputFiles,_ client:OwnedRecoveryBoundary){self.inputFiles=inputFiles;self.client=client}
+ private struct Pending {var checkpoint:ProviderCheckpoint;var state:State;var inputInventoried=false;var quarantined=false}
+ private var pending:[Int32:Pending]=[:]
+ func match(_ checkpoint:ProviderCheckpoint,message:TDLibResponse,oldMessageID:Int64?=nil,inventoried:Bool=false) throws -> Int32? {
+  pending[1]=Pending(checkpoint:checkpoint,state:State(chatID:-100,sendingID:1,byteCount:3,filename:"original.heic",temporaryID:50,fileID:7),inputInventoried:inventoried)
+  return try matchingPending(message,oldMessageID:oldMessageID)
+ }
+ func traceOwnedLookup(_ checkpoint:ProviderCheckpoint,pages:Int,candidates:Int,found:Bool,local:Bool) async {}
+ func incompleteHistory()->SafeFailure {SafeFailure(.reconciliation,domain:.tdlib,cause:.incompleteHistory)}
+ func lookup(_ checkpoint:ProviderCheckpoint,fileID:Int32?) async throws -> TDLibResponse? {
+  try await findOwnedMessage(checkpoint:checkpoint,state:State(chatID:-100,sendingID:1,byteCount:3,filename:"original.heic",fileID:fileID))
+ }
+''' + section(telegram, '    private struct State:', '    private enum Resolution:')
+ + section(telegram, '    private func matchingPending(', '    private func indexNew(')
+ + section(telegram, '    private func findOwnedMessage(', '    /// Settings/P6') + '}\n')
+(out / 'ActualTelegramSettlement.swift').write_text('''import Foundation
+import CloudifiedCore
+enum TDLibClient {
+''' + section(client, '    static func retryDelay(', '    // MARK: - Error Classification') + '''}
+actor TelegramSettlementHarness {
+ let client:OwnedRecoveryBoundary, ledger:Ledger, files:FileLeaseStore,inputFiles:TelegramInputFiles
+ private var scope:Scope?=Scope(version:1,userID:1,chatID:-100)
+ private var busy=false,nextSendingID:Int32=1,pending:[Int32:Pending]=[:],historyRevision:UInt64=0
+ private var mapped:Destination?,epoch:UUID?,scanning=false
+ let eventContinuation=AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1)).continuation
+ let statusContinuation=AsyncStream<Void>.makeStream(bufferingPolicy:.bufferingNewest(1)).continuation
+ init(_ client:OwnedRecoveryBoundary,_ ledger:Ledger,_ files:FileLeaseStore){self.client=client;self.ledger=ledger;self.files=files;inputFiles=TelegramInputFiles(stagingRoot:files.root)}
+ func startConsumer() async throws {}
+ func verify(_ destination:Destination) async throws {mapped=destination}
+ func incompleteHistory()->SafeFailure {SafeFailure(.reconciliation,domain:.tdlib,cause:.incompleteHistory)}
+ func run(_ destination:Destination) async throws {try await recoverInputs(destination)}
+ func install(_ checkpoint:ProviderCheckpoint) async throws {
+  let value=State(chatID:-100,sendingID:1,byteCount:3,filename:"original.heic",temporaryID:50,fileID:7)
+  try await ledger.saveProviderCheckpoint(ProviderCheckpoint(destinationID:checkpoint.destinationID,tag:checkpoint.tag,
+    transferID:checkpoint.transferID,jobID:checkpoint.jobID,phase:.uncertain,inputsTerminal:false,payload:ProviderSupport.canonical(value)))
+ }
+''' + section(telegram, '    private struct Scope:', '    private let client:')
+ + section(telegram, '    @discardableResult private func save(', '    private func handle(')
+ + section(telegram, '    private func finish(', '    private func awaitResolution(')
+ + section(telegram, '    private func resolve(', '    func recover(')
+ + section(telegram, '    private func recoverInputs(', '    /// Settings/P6')
+ + section(telegram, '    private func receipt(', '    private func incompleteHistory(') + '}\n')
+pipeline = (ROOT / 'App/Adapters/PhotoLibrary/PhotoLibraryPipeline.swift').read_text()
+coalescer = pipeline[pipeline.index('final class SourceProgressCoalescer:'):]
+coalescer = coalescer[:coalescer.rindex('}')] + ' func closedForBoundary()->Bool {state.withLock{$0.closed}}\n}\n'
+(out / 'ActualProgressCoalescer.swift').write_text('import Foundation\nimport os\nimport CloudifiedCore\n' + coalescer)
+exporter = (ROOT / 'App/Adapters/PhotoLibrary/PhotoResourceExporter.swift').read_text()
+body = exporter[exporter.index('private final class ExportRequest:'):].replace('private final class ExportRequest:', 'final class ExportRequest:')
+body = body[:body.rindex('}')] + ' func forceStallForBoundary(){lock.withLock{lastActivity = -1000}; _ = cancelIfStalled()}\n}\n'
+(out / 'ActualPhotoExport.swift').write_text('import Foundation\nimport CloudifiedCore\n' + body)
+bridge = (ROOT / 'App/Adapters/Telegram/TDLibBridge.swift').read_text()
+(out / 'Errors.swift').write_text('import Foundation\n' + section(bridge, 'public enum TDLibResponseLimit:', 'public final class TDLibBridge:'))
+files = [ROOT / 'App/Adapters/System/AppRuntime.swift', out / 'ActualTelegramSettlement.swift', ROOT / 'scripts/regressions/AuditBoundaries.swift', ROOT / 'App/Adapters/GooglePhotos/ForegroundFileUploadTransport.swift', ROOT / 'App/Adapters/PhotoLibrary/StreamingHasher.swift', ROOT / 'App/Adapters/PhotoLibrary/SourceRecipe.swift', ROOT / 'App/Adapters/PhotoLibrary/LosslessVideoPartSplitter.swift', out / 'ActualProgressCoalescer.swift', out / 'ActualPhotoExport.swift', ROOT / 'scripts/regressions/TelegramRecoveryBoundary.swift', ROOT / 'App/Adapters/Telegram/TelegramInputFiles.swift', ROOT / 'App/Presentation/Dashboard/DashboardViewState.swift', out / 'ActualNetworkPolicy.swift', out / 'ActualOwnedRecovery.swift', ROOT / 'scripts/regressions/CoreRegression.swift', ROOT / 'scripts/regressions/PresentationRecovery.swift', ROOT / 'App/Presentation/ScreenStateStore.swift', ROOT / 'App/Presentation/NotUploaded/NotUploadedViewState.swift', ROOT / 'scripts/regressions/CredentialKeyBoundary.swift', ROOT / 'App/Adapters/Security/KeychainCredentialStore.swift', ROOT / 'scripts/regressions/NativeProtocolBoundary.swift', ROOT / 'scripts/regressions/TelegramCensusBoundary.swift', ROOT / 'scripts/regressions/LaneIsolation.swift',
+         ROOT / 'App/Adapters/Telegram/TDLibJSON.swift', ROOT / 'App/Adapters/Telegram/TelegramDocumentReference.swift',
+         out / 'ActualCensus.swift', out / 'ActualResolution.swift', out / 'ActualProtocolRecovery.swift', out / 'Support.swift', out / 'Errors.swift']
+run(['swiftc', *common, '-parse-as-library', *map(str, files), '-L', str(out),
+     '-lCloudifiedCore', '-lCloudifiedDiagnostics', '-o', str(out / 'regressions')])
+subprocess.run([str(out / 'regressions')], env=dict(os.environ, DYLD_LIBRARY_PATH=str(out)), check=True, timeout=60)

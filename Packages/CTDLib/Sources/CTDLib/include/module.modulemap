@@ -1,0 +1,4 @@
+module CTDLib [system] {
+    header "td_json_client.h"
+    export *
+}

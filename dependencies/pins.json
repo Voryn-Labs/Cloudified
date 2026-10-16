@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "selectedOn": "2026-10-08",
+  "selectionEvidence": "Public HEAD resolved once with git ls-remote; exact commits fetched and verified at FETCH_HEAD.",
+  "photosBackup": {
+    "repository": "https://github.com/g8row/PhotosBackup.git",
+    "commit": "3c88269e18b9d4515e97d846c5816bd836285c3e",
+    "purpose": "Google original/non-quota implementation reference; required GPMC/auth sources only",
+    "status": "exact pin verified; license MIT; vendored behind GooglePhotosClientSession boundary",
+    "licenseVerifiedAtPin": true,
+    "license": "MIT (see licenses/LICENSE-PhotosBackup.txt)"
+  },
+  "tdlib": {
+    "repository": "https://github.com/tdlib/td.git",
+    "commit": "42e6a5259551178d1dab54a22ad96d14bd906e20",
+    "purpose": "Official native Telegram client and documented JSON C ABI",
+    "status": "exact pin verified; license Boost 1.0; JSON C ABI integrated via Packages/CTDLib and TDLibBridge",
+    "licenseVerifiedAtPin": true,
+    "license": "Boost Software License 1.0 (see licenses/LICENSE-TDLib.txt)",
+    "artifactSha256": null
+  },
+  "transitiveDependencies": [
+    {
+      "name": "openssl",
+      "repository": "https://github.com/openssl/openssl.git",
+      "commit": "45e844fa2a14ec92d146bd8f5778ac130b6625fb",
+      "version": "openssl-3.5.9",
+      "license": "Apache License 2.0 (see licenses/LICENSE-OpenSSL.txt)",
+      "purpose": "Cryptographic backend for TDLib native network and database encryption on iOS",
+      "licenseVerifiedAtPin": true,
+      "artifactSha256": null,
+      "status": "exact pin verified; OpenSSL 3.5.9 LTS, license Apache 2.0; native closure/linking remains unbuilt until P7; manifest entries are not artifact evidence.",
+      "selectionEvidence": {
+        "selectedOn": "2026-10-08",
+        "method": "git ls-remote annotated release tag and peeled commit",
+        "tagObject": "d0ca66a1abe52545f14eca635c648932fcde5615",
+        "releaseSource": "https://openssl-library.org/source/"
+      },
+      "licenseSha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "configurationSource": "Configurations/15-ios.conf",
+      "configurationSha256": "5276128a9e3ae665a128ba6e6330b65130ad78f4f6d822ccdf2ebe26b67518b5",
+      "configurationTarget": "ios64-xcrun"
+    }
+  ],
+  "transitiveStatus": "OpenSSL 3.5.9 LTS exact source pin, license Apache 2.0 and configuration verified in P4-A-R2. Native closure/linking remains unbuilt until P7; manifest entries are not artifact evidence."
+}

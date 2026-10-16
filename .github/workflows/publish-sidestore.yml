@@ -1,0 +1,73 @@
+name: Publish releases
+
+on:
+  workflow_run:
+    workflows: [Manual iOS build]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: cloudified-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == 'Voryn-Labs/Cloudified'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN_ID: ${{ github.event.workflow_run.id }}
+      BUILD_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      BUILD_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      BUILD_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+      - name: Download successful unsigned IPA evidence
+        if: env.BUILD_CONCLUSION == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/cloudified-artifact"
+          gh run download "$BUILD_RUN_ID" \
+            --repo Voryn-Labs/Cloudified \
+            --name "Cloudified-build-$BUILD_RUN_ID" \
+            --dir "$RUNNER_TEMP/cloudified-artifact"
+      - name: Verify and stage this build
+        run: |
+          python3 distribution/stage_build.py \
+            --run-id "$BUILD_RUN_ID" \
+            --run-number "$BUILD_RUN_NUMBER" \
+            --head-sha "$BUILD_HEAD_SHA" \
+            --conclusion "$BUILD_CONCLUSION" \
+            --artifact-dir "$RUNNER_TEMP/cloudified-artifact" \
+            --manifest "$RUNNER_TEMP/cloudified-manifest.json"
+      - name: Update the installer feed
+        if: env.BUILD_CONCLUSION == 'success'
+        run: |
+          python3 distribution/update_source.py \
+            --manifest "$RUNNER_TEMP/cloudified-manifest.json" \
+            --artifact-dir "$RUNNER_TEMP/cloudified-artifact"
+      - name: Commit the verified feed
+        if: env.BUILD_CONCLUSION == 'success'
+        run: |
+          git config user.name 'Cloudified CI'
+          git config user.email '210030099+tinyredphoenix@users.noreply.github.com'
+          git add source.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'source: publish verified release'
+            git push origin HEAD:main
+          fi
+      - name: Promote the verified release
+        if: env.BUILD_CONCLUSION == 'success'
+        run: |
+          python3 distribution/update_source.py \
+            --manifest "$RUNNER_TEMP/cloudified-manifest.json" \
+            --artifact-dir "$RUNNER_TEMP/cloudified-artifact" \
+            --promote

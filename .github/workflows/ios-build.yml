@@ -1,0 +1,100 @@
+name: Manual iOS build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudified-ios-build
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check documents
+        run: python3 scripts/check_docs.py
+      - name: Require implemented project
+        run: |
+          if [ ! -d Cloudified.xcodeproj ]; then
+            echo '::error::The app project is not implemented yet. No macOS build will start.'
+            exit 1
+          fi
+      - name: Require public standard-runner build
+        env:
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$REPOSITORY_IS_PRIVATE" != false ]; then
+            echo '::error::Build stopped: recheck allowance before building a private repository.'
+            exit 1
+          fi
+
+  build:
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require pinned Xcode
+        run: test -d "$DEVELOPER_DIR"
+      - name: Verify queue and protocol regressions
+        run: python3 scripts/check_core_regressions.py
+      - name: Typecheck application sources
+        run: python3 scripts/check_swift_source.py --sdk "$(xcrun --sdk macosx --show-sdk-path)"
+      - name: Fingerprint compiler and native dependencies
+        id: inputs
+        run: python3 scripts/build_cache.py prepare
+      - name: Restore exact native dependency cache
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: build/tdlib
+          key: cloudified-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.native-key }}
+      - name: Verify or assemble native dependencies
+        run: |
+          if ! python3 scripts/build_cache.py verify-tdlib; then
+            python3 scripts/build_cache.py reset-tdlib
+            bash scripts/assemble_tdlib.sh
+          fi
+          python3 scripts/build_cache.py verify-tdlib
+      - name: Save verified native dependencies
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: build/tdlib
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Restore compiler and Swift package caches
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            build/DerivedData/ModuleCache.noindex
+            build/DerivedData/SDKStatCaches.noindex
+            build/DerivedData/Build/Intermediates.noindex
+            build/DerivedData/SourcePackages
+          key: cloudified-compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.compile-key }}-${{ github.sha }}
+          restore-keys: |
+            cloudified-compile-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.compile-key }}-
+      - name: Build unsigned device IPA
+        run: bash scripts/build_unsigned_ipa.sh
+      - name: Keep build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Cloudified-build-${{ github.run_id }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            build/Cloudified-unsigned.ipa
+            build/Cloudified-unsigned.ipa.sha256
+            build/xcodebuild.log
+            build/Build.xcresult

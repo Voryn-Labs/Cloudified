@@ -1,0 +1,22 @@
+{
+  "repository": "Voryn-Labs/Cloudified",
+  "asset": "Cloudified-unsigned.ipa",
+  "latest": {
+    "tag": "ci-run-38920202426-untested",
+    "name": "Cloudified 0.1",
+    "publishedAt": "2026-10-16T15:04:00Z",
+    "assetID": 647682223,
+    "downloads": 2
+  },
+  "total": 2,
+  "releases": [
+    {
+      "tag": "ci-run-38920202426-untested",
+      "name": "Cloudified 0.1",
+      "publishedAt": "2026-10-16T15:04:00Z",
+      "assetID": 647682223,
+      "downloads": 2
+    }
+  ],
+  "collectedAt": "2026-10-16T22:20:42+00:00"
+}
