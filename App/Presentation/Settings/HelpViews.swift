@@ -4,7 +4,7 @@ enum CloudifiedSupport {
     static let companyPage = URL(string: "https://voryn-labs.github.io/")!
     static let repository = URL(string: "https://github.com/Voryn-Labs/Cloudified")!
     static let issues = repository.appendingPathComponent("issues")
-    static let source = URL(string: "https://raw.githubusercontent.com/Voryn-Labs/Cloudified-Source/main/source.json")!
+    static let source = URL(string: "https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/source.json")!
 
     static func issueDraft(report: URL? = nil, feedback: Bool = false) -> URL {
         let bundle = Bundle.main
