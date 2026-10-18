@@ -6,17 +6,17 @@
     "name": "Cloudified 0.1",
     "publishedAt": "2026-10-16T15:04:00Z",
     "assetID": 647682223,
-    "downloads": 14
+    "downloads": 15
   },
-  "total": 14,
+  "total": 15,
   "releases": [
     {
       "tag": "ci-run-38920202426-untested",
       "name": "Cloudified 0.1",
       "publishedAt": "2026-10-16T15:04:00Z",
       "assetID": 647682223,
-      "downloads": 14
+      "downloads": 15
     }
   ],
-  "collectedAt": "2026-10-18T04:42:30+00:00"
+  "collectedAt": "2026-10-18T15:56:34+00:00"
 }
