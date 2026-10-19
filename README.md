@@ -14,14 +14,15 @@ its own queue, progress and recovery, so a problem with one can leave the other 
 [Setup guide](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md) ·
 [Privacy](docs/public/PRIVACY.md) · [Report an issue](https://github.com/Voryn-Labs/Cloudified/issues)
 
-## Cloudified 0.2
+## Cloudified 0.3
 
 The public identity is **`com.vorynlabs.cloudified`**, for **iOS 26 or later**.
 Public releases start at **0.1**. Link your destinations and let Cloudified check
 existing remote files before uploading new ones.
 
-Version **0.2** adds a three-screen first-launch walkthrough for setup, storage
-limits and Google account risk, plus audit fixes and stronger release checks.
+Version **0.3** redesigns the three-screen walkthrough with shorter copy, clearer
+visuals and a separate storage/account-details sheet. Google account risk remains
+visible. [Full changelog](docs/public/CHANGELOG.md).
 Replay it in **Settings → Getting started**. The current release still requires
 iOS 26; an iOS 16 backport needs separate background, UI and native-library work.
 
@@ -62,12 +63,8 @@ background app. Cloudified retains the same iOS 26 minimum in every installation
 For compatible source readers, add **Voryn Labs**:
 
 ```text
-https://voryn-labs.github.io/source.json
+https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/source.json
 ```
-
-This single source lists **Cloudified and Musyn**. After publishing new app versions,
-the maintainer runs [Update iOS source](https://github.com/Voryn-Labs/Voryn-Labs.github.io/actions/workflows/update-ios-source.yml)
-manually; no source-refresh timer is configured.
 
 Open the app, allow Photos access, then link and map your destinations. Keep the
 same signing team and bundle ID for later updates to the public app.

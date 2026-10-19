@@ -22,6 +22,8 @@ def verify(manifest, artifact_dir):
             or re.fullmatch(r'[0-9a-f]{40}', str(manifest.get('headSha', ''))) is None
             or re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', str(manifest.get('version', ''))) is None
             or type(manifest.get('runNumber')) is not int
+            or not isinstance(manifest.get('releaseNotes'), str)
+            or not manifest['releaseNotes'].strip() or len(manifest['releaseNotes']) > 8000
             or str(manifest.get('buildVersion')) != str(manifest['runNumber'])):
         raise ValueError('Build manifest identity or provenance is invalid')
     ipa = artifact_dir / IPA_NAME
@@ -62,7 +64,7 @@ def update(source, manifest, release):
             'buildVersion': manifest['buildVersion'],
             'marketingVersion': f"{manifest['version']} ({manifest['buildVersion']})",
             'date': release.get('published_at') or datetime.now(timezone.utc).isoformat(timespec='seconds'),
-            'localizedDescription': 'Original photo and video backup by Voryn Labs. Sign the IPA with your preferred installer.',
+            'localizedDescription': manifest['releaseNotes'],
             'downloadURL': url, 'size': manifest['size'], 'sha256': manifest['sha256'],
             'minOSVersion': '26.0',
         })

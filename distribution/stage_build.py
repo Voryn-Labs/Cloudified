@@ -69,6 +69,25 @@ def source_version(head_sha: str) -> str:
     return version
 
 
+def release_notes(markdown: str, version: str) -> str:
+    section = re.search(r"^## " + re.escape(version) + r"(?: —[^\n]*)?\n(.*?)(?=^## |\Z)",
+                        markdown, flags=re.MULTILINE | re.DOTALL)
+    notes = section.group(1).strip() if section else ""
+    if not notes or len(notes) > 8000:
+        raise ValueError("The built version needs a nonempty changelog section (at most 8000 characters)")
+    return notes
+
+
+def source_release_notes(head_sha: str, version: str) -> str:
+    source = json.loads(run(
+        "gh", "api", f"repos/{APP_REPO}/contents/docs/public/CHANGELOG.md?ref={head_sha}",
+    ).stdout)
+    if source.get("encoding") != "base64":
+        raise ValueError("Source changelog has an unexpected encoding")
+    markdown = base64.b64decode("".join(source["content"].split()), validate=True).decode("utf-8")
+    return release_notes(markdown, version)
+
+
 def stage_success(args: argparse.Namespace, manifest: dict) -> None:
     ipa = args.artifact_dir / IPA_NAME
     checksum_file = args.artifact_dir / (IPA_NAME + ".sha256")
@@ -86,6 +105,7 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
             or info.get("CloudifiedRevision") != args.head_sha):
         raise ValueError("IPA identity, version, build number, or source revision differs from the completed run")
 
+    notes = source_release_notes(args.head_sha, version)
     tag = release_tag(args.run_id)
     stage_url = f"https://github.com/{APP_REPO}/releases/download/{tag}/{IPA_NAME}"
     existing = subprocess.run(
@@ -103,7 +123,7 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
             "gh", "release", "create", tag, *attachments,
             "--repo", APP_REPO, "--target", args.head_sha,
             "--title", f"Cloudified {version}",
-            "--notes", f"Original photo and video backup by Voryn Labs.\n\nVersion {version} · Build {build} · iOS 26+\n\n[Install and set up](https://github.com/{APP_REPO}/blob/main/docs/public/SETUP.md) · [Downloads](https://github.com/{APP_REPO}/releases)\n\nBuild provenance: {manifest['runURL']}",
+            "--notes", f"{notes}\n\n---\n\nVersion {version} · Build {build} · iOS 26+\n\n[Install and set up](https://github.com/{APP_REPO}/blob/main/docs/public/SETUP.md) · [Full changelog](https://github.com/{APP_REPO}/blob/main/docs/public/CHANGELOG.md)\n\nBuild provenance: {manifest['runURL']}\n\nCompiled and packaged by CI; physical-device layout, motion and account behavior still need device verification.",
             "--prerelease",
         )
     manifest.update({
@@ -114,6 +134,7 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
         "size": ipa.stat().st_size,
         "stageURL": stage_url,
         "stageTag": tag,
+        "releaseNotes": notes,
     })
 
 

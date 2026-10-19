@@ -3,129 +3,230 @@ import SwiftUI
 struct WalkthroughView: View {
     let onFinish: (Bool) -> Void
     @State private var page = 0
+    @State private var showsStorageDetails = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image("VorynMark").resizable().scaledToFit().frame(width: 24, height: 24)
-                    .accessibilityHidden(true)
-                Text("Voryn Labs").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
-                Spacer()
-                Button("Skip") { onFinish(false) }.frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel("Skip walkthrough and open Cloudified")
-            }
-            .padding(.horizontal, 24).padding(.top, 8)
+            header
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    hero
+                VStack(spacing: 28) {
+                    illustration
+                    VStack(spacing: 12) {
+                        Text(title)
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .accessibilityAddTraits(.isHeader)
+                        if page == 0 {
+                            Text("Photos, videos and Live Photos.\nGoogle Photos, Telegram, or both.")
+                                .font(.body).foregroundStyle(.secondary)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     switch page {
                     case 0: introduction
                     case 1: storage
                     default: setup
                     }
                 }
-                .frame(maxWidth: 560, alignment: .leading)
-                .padding(24)
+                .frame(maxWidth: 440)
+                .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
                 .frame(maxWidth: .infinity)
             }
             .id(page)
+            .scrollIndicators(.hidden)
         }
         .background(Color(uiColor: .systemBackground))
         .safeAreaInset(edge: .bottom, spacing: 0) { controls }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: page)
+        .sheet(isPresented: $showsStorageDetails) { storageDetails }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            if page == 0 {
-                Image("BrandMark").resizable().scaledToFit().frame(width: 96, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: page == 1 ? "infinity" : "checklist")
-                    .font(.system(size: 44, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 96, height: 96, alignment: .leading)
-                    .accessibilityHidden(true)
+    private var header: some View {
+        HStack {
+            Button {
+                changePage(to: page - 1)
+            } label: {
+                Image(systemName: "chevron.left").font(.body.weight(.semibold))
+                    .frame(width: 48, height: 48)
             }
-            Text(page == 0 ? "Your originals.\nTwo destinations." : page == 1 ? "Free storage.\nKnow the limits." : "Ready for your\nfirst backup.")
-                .font(.largeTitle.weight(.bold))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel("Previous step")
+            .disabled(page == 0).opacity(page == 0 ? 0 : 1)
+            Spacer(minLength: 0)
+            Text("Cloudified").font(.headline).foregroundStyle(.primary)
+            Spacer(minLength: 0)
+            Button("Skip") { onFinish(false) }
+                .font(.subheadline).frame(minWidth: 48, minHeight: 48)
+                .accessibilityLabel("Skip walkthrough and open Cloudified")
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var title: String {
+        switch page {
+        case 0: "Your originals.\nBacked up."
+        case 1: "More space.\nKnow the trade-offs."
+        default: "A few steps.\nThen it runs."
         }
     }
+
+    private var illustration: some View {
+        Group {
+            if page == 0 {
+                HStack(spacing: 20) {
+                    Image("BrandMark").resizable().scaledToFit()
+                        .frame(width: 100, height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    Image(systemName: "arrow.right").font(.title3).foregroundStyle(.tertiary)
+                    VStack(spacing: 12) {
+                        destinationSymbol("photo.on.rectangle", name: "Google Photos")
+                        destinationSymbol("paperplane", name: "Telegram")
+                    }
+                }
+            } else {
+                Image(systemName: page == 1 ? "infinity" : "checkmark.shield")
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 128, height: 128)
+                    .background(Color.accentColor.opacity(0.08), in: Circle())
+            }
+        }
+        .frame(height: 144)
+        .dynamicTypeSize(.large)
+        .accessibilityHidden(true)
+    }
+
+    private func destinationSymbol(_ symbol: String, name: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(Color.accentColor)
+                .frame(width: 28)
+            Text(name).font(.caption.weight(.medium)).foregroundStyle(.primary)
+        }
+        .frame(maxWidth: 144, alignment: .leading)
+        .padding(12)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private var introduction: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Cloudified backs up your iPhone photos and videos to Google Photos, Telegram, or both.")
-                .font(.title3).foregroundStyle(.secondary)
-            detail("Original quality", symbol: "photo.on.rectangle.angled",
-                   text: "HEIC, JPEG, videos and supported Live Photo components stay in their original quality.")
-            detail("Two independent backups", symbol: "arrow.triangle.branch",
-                   text: "Each destination has its own queue and progress. A problem with one can leave the other running.")
-            detail("Check before sending", symbol: "checkmark.shield",
-                   text: "Known uploads are checked before another copy is sent. Uncertain files remain visible for verification.")
+        VStack(spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                benefit("Original\nquality", symbol: "photo")
+                benefit("Separate\nqueues", symbol: "arrow.triangle.branch")
+                benefit("Duplicate\nchecks", symbol: "checkmark.shield")
+            }
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            Text("Your library stays on your iPhone.\nCloudified never deletes your originals.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
     }
+
+    private func benefit(_ title: String, symbol: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(Color.accentColor)
+            Text(title).font(.caption.weight(.medium)).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
     private var storage: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            detail("Telegram cloud storage", symbol: "paperplane",
-                   text: "Telegram offers free unlimited cloud storage with per-file and service limits. Originals go to your private channel; oversized files use lossless parts.")
-            detail("Google: unofficial unlimited-storage method", symbol: "cloud",
-                   text: "An unofficial Pixel-style method requests original-quality uploads that do not count toward quota. This is not guaranteed: Google can count uploads, change the method or block access.")
-            detail("Understand the Google account risk", symbol: "exclamationmark.shield",
-                   text: "Google can restrict or suspend the account. Sign-in uses a broad Android credential, not Photos-only access. Use a separate backup account; isolation from other Google accounts is not guaranteed.")
-            Text("Google is optional. Telegram channel files are not end-to-end encrypted. Keep an independent copy of important originals.")
-                .font(.footnote).foregroundStyle(.secondary)
-            Link("Read account and privacy notes", destination: CloudifiedSupport.repository.appendingPathComponent("blob/main/docs/public/PRIVACY.md"))
-                .font(.subheadline).frame(minHeight: 44)
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 20) {
+                fact("Telegram", symbol: "paperplane", text: "Free unlimited cloud storage, with file and service limits.")
+                Divider()
+                fact("Google Photos", symbol: "photo.on.rectangle", text: "Unlimited-storage workaround. Unofficial and not guaranteed.")
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Use a separate Google account", systemImage: "exclamationmark.shield")
+                    .font(.subheadline.weight(.semibold))
+                Text("Google may restrict or suspend the account. Linking is optional.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Button("Storage & account details") { showsStorageDetails = true }
+                .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
         }
     }
-    private var setup: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            detail("1. Choose Photos access", symbol: "photo.badge.checkmark",
-                   text: "Backup includes accessible hidden photos and every burst frame. Limited access restricts which items iOS makes available.")
-            detail("2. Link your destinations", symbol: "link",
-                   text: "Open Settings to connect Google Photos, Telegram, or both. Telegram needs your API credentials and a private channel you own. Guides walk you through each step.")
-            detail("3. Let backup run", symbol: "moon.stars",
-                   text: "Opening Cloudified starts eligible backups automatically. For long batches, use Keep Awake while charging. iOS controls background time; LiveContainer needs the app open.")
-            Text("Activity identifies files that need attention. Cloudified does not delete originals from your Photos library.")
-                .font(.footnote).foregroundStyle(.secondary)
-        }
-    }
-    private func detail(_ title: String, symbol: String, text: String) -> some View {
+
+    private func fact(_ title: String, symbol: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            SymbolTile(systemName: symbol)
+            Image(systemName: symbol).font(.title3).foregroundStyle(Color.accentColor)
+                .frame(width: 28, height: 28).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(title).font(.headline)
-                Text(text).font(.body).foregroundStyle(.secondary)
+                Text(text).font(.subheadline).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private var setup: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            fact("Choose Photos access", symbol: "photo.badge.checkmark", text: "Allow full or selected-library access.")
+            fact("Connect a destination", symbol: "link", text: "Google Photos, your private Telegram channel, or both. Guides are included.")
+            fact("Open the app. Backups start.", symbol: "arrow.up.circle", text: "Use Keep Awake for long batches. Your originals stay on your iPhone.")
+            Text("Background time depends on iOS.\nIn LiveContainer, keep Cloudified open.")
+                .font(.footnote).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+        }
+    }
+
     private var controls: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             HStack(spacing: 8) {
                 ForEach(0..<3) { index in
-                    Capsule().fill(index == page ? Color.accentColor : Color.secondary.opacity(0.25))
-                        .frame(width: 20, height: 4)
+                    Capsule().fill(index == page ? Color.accentColor : Color.secondary.opacity(0.2))
+                        .frame(width: index == page ? 24 : 6, height: 6)
                 }
-                Text("\(page + 1) of 3").font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }.accessibilityElement(children: .ignore).accessibilityLabel("Step \(page + 1) of 3")
-            HStack(spacing: 16) {
-                if page > 0 { Button("Back") { page -= 1 }.frame(minWidth: 64, minHeight: 48) }
-                Button {
-                    if page < 2 { page += 1 } else { onFinish(true) }
-                } label: {
-                    Text(page == 2 ? "Set up backups" : "Continue").frame(maxWidth: .infinity, minHeight: 32)
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
             }
+            .accessibilityElement(children: .ignore).accessibilityLabel("Step \(page + 1) of 3")
+            Button {
+                if page < 2 { changePage(to: page + 1) } else { onFinish(true) }
+            } label: {
+                Text(page == 2 ? "Open setup" : "Continue")
+                    .font(.headline).frame(maxWidth: .infinity, minHeight: 32)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
         }
-        .frame(maxWidth: 560)
+        .frame(maxWidth: 440)
         .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .background(Color(uiColor: .systemBackground))
+    }
+
+    private func changePage(to next: Int) {
+        guard (0..<3).contains(next) else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { page = next }
+    }
+
+    private var storageDetails: some View {
+        NavigationStack {
+            List {
+                Section("Telegram") {
+                    Text("Original files go to your private channel. Oversized files use lossless parts. Telegram can impose file, rate and service limits; permanent availability is not guaranteed.")
+                    Text("Channel files are not end-to-end encrypted. Keep an independent copy of important originals.")
+                }
+                Section("Google Photos") {
+                    Text("An unofficial Pixel-style method requests original-quality uploads that do not count toward quota. Google can count uploads, change the method or block access.")
+                    Text("Sign-in uses a broad Android credential, not Photos-only access. The whole account may be restricted or suspended. A separate backup account is recommended; isolation from other Google accounts is not guaranteed.")
+                    Link("Read account and privacy notes", destination: CloudifiedSupport.repository.appendingPathComponent("blob/main/docs/public/PRIVACY.md"))
+                }
+            }
+            .navigationTitle("Storage & accounts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showsStorageDetails = false }
+                }
+            }
+        }
     }
 }
