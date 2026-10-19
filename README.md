@@ -62,8 +62,12 @@ background app. Cloudified retains the same iOS 26 minimum in every installation
 For compatible source readers, add **Voryn Labs**:
 
 ```text
-https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/source.json
+https://voryn-labs.github.io/source.json
 ```
+
+This single source lists **Cloudified and Musyn**. After publishing new app versions,
+the maintainer runs [Update iOS source](https://github.com/Voryn-Labs/Voryn-Labs.github.io/actions/workflows/update-ios-source.yml)
+manually; no source-refresh timer is configured.
 
 Open the app, allow Photos access, then link and map your destinations. Keep the
 same signing team and bundle ID for later updates to the public app.
