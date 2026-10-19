@@ -18,6 +18,17 @@
       "category": "photo-video",
       "versions": [
         {
+          "version": "0.2",
+          "buildVersion": "28",
+          "marketingVersion": "0.2 (28)",
+          "date": "2026-10-19T10:15:44Z",
+          "localizedDescription": "Original photo and video backup by Voryn Labs. Sign the IPA with your preferred installer.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/build-39233571132/Cloudified-unsigned.ipa",
+          "size": 17849001,
+          "sha256": "f57be8d8b1db8575f154237d5a0a5ef3985c06e6c307053e1190b843fe7bb831",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.1",
           "buildVersion": "27",
           "marketingVersion": "0.1 (27)",
