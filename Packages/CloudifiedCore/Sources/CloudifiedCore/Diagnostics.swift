@@ -8,7 +8,7 @@ private enum DiagnosticTimeline {
         .googleAuthenticate, .googleReadAccess, .googleMapping, .googleRecovery,
         .telegramStart, .telegramStorage, .telegramNativeCreate, .telegramAuthorization,
         .telegramParameters, .telegramAuthState, .diagnosticUpload, .backgroundContinuation,
-        .automaticBackground, .networkPolicy, .telegramCensus, .telegramRecovery, .telegramProtocol
+        .automaticBackground, .networkPolicy, .telegramCensus, .telegramRecovery, .telegramProtocol, .telegramLocalReset, .startupInventory
     ]
     static let operations: [EventOperation] = [
         .appStart, .batchStart, .batchEnd, .pause, .resume, .mappingChanged,

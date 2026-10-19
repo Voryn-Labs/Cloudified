@@ -148,6 +148,11 @@ struct TelegramGuideView: View {
             Section("Changing accounts or channels") {
                 Text("Change channel chooses another archive destination and checks its contents independently. Disconnect destination removes the mapping; saved messages remain. Log out of this app ends Cloudified’s Telegram session, without logging out your other Telegram apps.")
             }
+            Section("Privacy and local connection recovery") {
+                Text("Cloudified sends original files without adding encryption to them. Telegram cloud channels are not end-to-end encrypted; Secret Chats are a different feature and are not supported as backup destinations.")
+                Text("A separate key protects TDLib’s local connection database on your iPhone. If that key becomes unavailable, try the original signing identity first. Settings → Telegram offers Reset local Telegram connection only for this error. It requires signing in and mapping your channel again, and is blocked while unresolved uploads need the old data. Uploaded channel messages and the backup record are preserved.")
+                Text("Local reset cannot revoke an unreadable old login. You can review and end old Cloudified sessions in Telegram → Settings → Devices.")
+            }
             Section("Why are there JSON files?") {
                 Text("Media is uploaded as original files. Small JSON manifests describe archive content and metadata for reconciliation and future viewing tools. Keep them with the media. Live Photos can have both a still image and a motion video, so one library item may create several messages.")
             }
@@ -163,6 +168,7 @@ struct BackupFAQView: View {
             Section("Library and quality") {
                 answer("Which files are included?", "Cloudified uploads accessible photos and videos, including supported iPhone originals such as HEIC and JPEG. Allow full Photos access to include the full library; limited access includes only selected items.")
                 answer("Are originals compressed?", "Cloudified sends original resource bytes. Telegram stores them as files. Google uses the original-quality upload profile. Unsupported originals appear as issues rather than being silently converted to lower quality.")
+                answer("Are hidden photos and bursts included?", "Yes. Cloudified backs up all accessible originals, including hidden photos and individual burst frames when iOS makes them available. Limited Photos access restricts which items can be read. Review access before connecting an upload destination.")
                 answer("How are Live Photos counted?", "A Live Photo is one library item. Telegram keeps both original components. Google follows Settings → Live Photos; the selected fallback can save only the key image or motion when pairing is unavailable.")
                 answer("Is there a 200-photo limit?", "No. There is no 200-photo library cap. Each enabled destination processes its own queue. Provider rate limits may temporarily pause that destination; adding more parallel uploads is not a guarantee of higher speed.")
             }

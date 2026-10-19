@@ -145,3 +145,18 @@ Actual device and installer verification is still required.
 Yes. Its original code is [MIT licensed](../../LICENSE): preserve the copyright
 and license notice. Upstream components retain their own notices. Credits and
 acknowledgements are on [GitHub](../../README.md#credits); there is no credits screen.
+
+## What does the first-launch walkthrough cover?
+
+Three screens explain original-quality backup, free/unlimited-storage claims and
+Google account risk, then Photos access and destination setup. Skip is available;
+Settings → Getting started reopens it. Google is optional, and quota treatment or
+account isolation cannot be guaranteed. Telegram offers unlimited cloud storage
+with per-file/service limits; its channel documents are not end-to-end encrypted.
+
+## Does version 0.2 support iOS 16?
+
+No. Version 0.2 requires iOS 26 or later. Supporting iOS 16 is technically plausible,
+but needs older-OS fallbacks for background continuation, Shortcuts and newer UI
+APIs, plus a rebuilt and verified native dependency closure. Lowering only the
+installer or plist minimum would not make the current IPA compatible.

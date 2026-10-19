@@ -133,6 +133,29 @@ public actor TDLibClient {
         return SafeFailure(.sourceUnavailable, domain: .fileSystem, code: value.code, cause: .storageUnavailable)
     }
 
+    // Caller must settle the provider and prove no retained inputs across all
+    // mappings. Never turn a missing local key into proof of remote absence.
+    func resetLocalDatabaseAfterKeyLoss() async throws {
+        guard !isStarting else { throw CoreError.invalidTransition }
+        isStarting = true
+        defer { isStarting = false }
+        guard !(await session.hasNativeClient) else { throw CoreError.recoveryRequired }
+        do {
+            _ = try credentialStore.getOrCreateTDLibDatabaseKey(forProfile: profileID, allowCreate: false)
+            throw CoreError.invalidTransition
+        } catch CredentialError.notConfigured {
+            // A present, inaccessible or corrupt key must never be discarded.
+        }
+        let roots = try Self.storageURLs(forProfile: profileID)
+        try Task.checkCancellation()
+        do {
+            // Canonical profile directories only. Remote messages, the backup
+            // ledger and original-media staging are outside these directories.
+            try FileManager.default.removeItem(at: roots.filesURL)
+            try FileManager.default.removeItem(at: roots.databaseURL)
+        } catch { throw Self.storageFailure(error) }
+    }
+
     /// Initializes and starts the native TDLib session with the given filesystem parameters.
     /// Strictly matches pinned td_api.tl `setTdlibParameters` schema with base64 encryption key.
     /// Prepares disjoint roots with complete-until-first-user-authentication protection and backup exclusion,

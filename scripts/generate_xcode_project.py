@@ -52,6 +52,7 @@ sources = [
     ("BackupIntents.swift", "application"),
 
     ("RootTabView.swift", "presentation"),
+    ("WalkthroughView.swift", "presentation"),
     ("AppAppearance.swift", "presentation"),
     ("ActivityView.swift", "presentation"),
     ("ScreenStateStore.swift", "presentation"),
@@ -507,7 +508,7 @@ pbxproj_content = f"""// !$*UTF8*$!
 \t\t\t\t\t"-lc++",
 \t\t\t\t\t"-lz",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 0.1;
+\t\t\t\tMARKETING_VERSION = 0.2;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
@@ -546,7 +547,7 @@ pbxproj_content = f"""// !$*UTF8*$!
 \t\t\t\t\t"-lc++",
 \t\t\t\t\t"-lz",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 0.1;
+\t\t\t\tMARKETING_VERSION = 0.2;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;

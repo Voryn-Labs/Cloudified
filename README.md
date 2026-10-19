@@ -14,11 +14,16 @@ its own queue, progress and recovery, so a problem with one can leave the other 
 [Setup guide](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md) ·
 [Privacy](docs/public/PRIVACY.md) · [Report an issue](https://github.com/Voryn-Labs/Cloudified/issues)
 
-## Cloudified 0.1
+## Cloudified 0.2
 
 The public identity is **`com.vorynlabs.cloudified`**, for **iOS 26 or later**.
 Public releases start at **0.1**. Link your destinations and let Cloudified check
 existing remote files before uploading new ones.
+
+Version **0.2** adds a three-screen first-launch walkthrough for setup, storage
+limits and Google account risk, plus audit fixes and stronger release checks.
+Replay it in **Settings → Getting started**. The current release still requires
+iOS 26; an iOS 16 backport needs separate background, UI and native-library work.
 
 ## Focused on backup
 

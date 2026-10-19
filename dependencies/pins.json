@@ -17,7 +17,8 @@
     "status": "exact pin verified; license Boost 1.0; JSON C ABI integrated via Packages/CTDLib and TDLibBridge",
     "licenseVerifiedAtPin": true,
     "license": "Boost Software License 1.0 (see licenses/LICENSE-TDLib.txt)",
-    "artifactSha256": null
+    "artifactHashPolicy": "Per-build native archives/headers/licenses are SHA-256 inventoried in build/tdlib/provenance.json and checked against the exact build-input fingerprint before reuse. No single portable source-level artifact hash.",
+    "artifactDigestLocation": "Per-build build/tdlib/provenance.json; verified by scripts/build_cache.py"
   },
   "transitiveDependencies": [
     {
@@ -28,8 +29,7 @@
       "license": "Apache License 2.0 (see licenses/LICENSE-OpenSSL.txt)",
       "purpose": "Cryptographic backend for TDLib native network and database encryption on iOS",
       "licenseVerifiedAtPin": true,
-      "artifactSha256": null,
-      "status": "exact pin verified; OpenSSL 3.5.9 LTS, license Apache 2.0; native closure/linking remains unbuilt until P7; manifest entries are not artifact evidence.",
+      "status": "Exact source pin and license verified. Published iPhone CI builds have assembled this native closure; each build verifies its own toolchain-specific provenance. This source manifest is not artifact or device evidence.",
       "selectionEvidence": {
         "selectedOn": "2026-10-08",
         "method": "git ls-remote annotated release tag and peeled commit",
@@ -39,8 +39,9 @@
       "licenseSha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
       "configurationSource": "Configurations/15-ios.conf",
       "configurationSha256": "5276128a9e3ae665a128ba6e6330b65130ad78f4f6d822ccdf2ebe26b67518b5",
-      "configurationTarget": "ios64-xcrun"
+      "configurationTarget": "ios64-xcrun",
+      "artifactDigestLocation": "Per-build build/tdlib/provenance.json; verified by scripts/build_cache.py"
     }
   ],
-  "transitiveStatus": "OpenSSL 3.5.9 LTS exact source pin, license Apache 2.0 and configuration verified in P4-A-R2. Native closure/linking remains unbuilt until P7; manifest entries are not artifact evidence."
+  "transitiveStatus": "Exact OpenSSL source/license/configuration pinned. Native build provenance is sealed and revalidated per toolchain; source pins do not substitute for build or runtime evidence."
 }

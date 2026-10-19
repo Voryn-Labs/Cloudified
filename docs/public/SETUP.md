@@ -4,7 +4,7 @@
 
 ## Install the public preview
 
-Public Cloudified 0.1 uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
+Public Cloudified 0.2 uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
 Import the unsigned IPA into Feather, SideStore, AltStore or another compatible
 signer and use your own signing setup. Source readers display **Voryn Labs**:
 
@@ -34,6 +34,12 @@ prefixes must agree with the final app ID. A signer or host may limit OS backgro
 support independently of Cloudified.
 
 ## Photos access
+
+The first launch shows three short screens covering original quality, storage
+limits and Google account risk, then setup. Continue through them or choose Skip;
+Settings → Getting started reopens the walkthrough. Upgrading from an earlier
+version also shows it once when no completion preference exists. The walkthrough
+does not link accounts, grant Photos permission or start an upload by itself.
 
 Open Cloudified and allow Photos access when prompted. Full access includes the
 photos and videos PhotoKit makes available, including hidden assets and individual

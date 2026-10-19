@@ -57,6 +57,7 @@ if [[ ! -d "$app_path" ]]; then
 fi
 mkdir -p "$app_path/ThirdPartyLicenses"
 cp "$repo_root/LICENSE" "$app_path/LICENSE.txt"
+cp "$repo_root/THIRD_PARTY_NOTICES.md" "$app_path/ThirdPartyLicenses/THIRD_PARTY_NOTICES.txt"
 for notice in "$repo_root"/licenses/LICENSE-* "$output_root"/tdlib/licenses/NOTICE*; do
   if [[ -f "$notice" ]]; then cp "$notice" "$app_path/ThirdPartyLicenses/"; fi
 done

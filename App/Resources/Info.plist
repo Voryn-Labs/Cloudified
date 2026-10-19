@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>0.2</string>
 	<key>CloudifiedRevision</key>
 	<string>$(CLOUDIFIED_REVISION)</string>
 	<key>CFBundleVersion</key>
@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Cloudified requires photo library access to back up original quality photos and videos to Google Photos and Telegram.</string>
+	<string>Cloudified backs up accessible original photos and videos, including hidden photos and every burst frame when iOS makes them available, to your enabled Google Photos and Telegram destinations.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

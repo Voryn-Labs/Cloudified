@@ -8,10 +8,24 @@ public struct RootTabView: View {
     }
 
     @AppStorage("CloudifiedAppearance") private var appearance = AppAppearance.system
+    @AppStorage("CloudifiedWalkthroughCompleted") private var walkthroughCompleted = false
 
     private var failureCount: Int? { environment.activityFailureCount }
 
     public var body: some View {
+        Group {
+            if walkthroughCompleted { tabs }
+            else {
+                WalkthroughView { openSetup in
+                    walkthroughCompleted = true
+                    if openSetup { environment.selectedTab = .settings }
+                }
+            }
+        }
+        .preferredColorScheme(appearance.colorScheme)
+    }
+
+    private var tabs: some View {
         TabView(selection: $environment.selectedTab) {
             DashboardView(environment: environment)
                 .tabItem {
@@ -32,7 +46,6 @@ public struct RootTabView: View {
                 }
                 .tag(AppTab.settings)
         }
-        .preferredColorScheme(appearance.colorScheme)
     }
 
     private var activityView: some View { ActivityView(environment: environment) }

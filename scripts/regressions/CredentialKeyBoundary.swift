@@ -19,6 +19,7 @@ private final class KeyFixture: KeychainStoreBackend, @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }; values.removeValue(forKey: key(service, account))
     }
 }
+func boundaryCredentialStore() -> KeychainCredentialStore { KeychainCredentialStore(backend: KeyFixture()) }
 func credentialKeyChecks() throws {
     let store = KeychainCredentialStore(backend: KeyFixture())
     do { _ = try store.getOrCreateTDLibDatabaseKey(forProfile: "primary", allowCreate: false); preconditionFailure("replacement database key generated") }

@@ -14,11 +14,23 @@ extension AppEnvironment {
         }
     }
     public func setNotifications(_ enabled: Bool) {
+        notificationPreferenceRevision &+= 1
+        let revision = notificationPreferenceRevision
         settingsState.notificationsEnabled = enabled; settingsState.notificationsRefused = false
         Task { [weak self] in
             let stored = await BackupNotifications.setEnabled(enabled)
-            self?.settingsState.notificationsEnabled = stored
-            self?.settingsState.notificationsRefused = enabled && !stored
+            guard let self, self.notificationPreferenceRevision == revision else { return }
+            self.settingsState.notificationsEnabled = stored
+            self.settingsState.notificationsRefused = enabled && !stored
+        }
+    }
+    func refreshNotificationPermission() {
+        let revision = notificationPreferenceRevision
+        Task { [weak self] in
+            let permission = await BackupNotifications.currentPermission()
+            guard let self, self.notificationPreferenceRevision == revision, !self.shuttingDown else { return }
+            self.settingsState.notificationsEnabled = permission.enabled
+            self.settingsState.notificationsRefused = permission.refused
         }
     }
     func scheduleAutomaticBackup() {
@@ -83,7 +95,13 @@ extension AppEnvironment {
         }
     }
     public func requestBackup() {
-        guard !shuttingDown, backgroundExpirationTask == nil, commandProvider == nil, !controlTransition, backupExecutionTask == nil else { return }
+        guard !shuttingDown, backgroundExpirationTask == nil, commandProvider == nil, !controlTransition else { return }
+        if backupExecutionTask != nil {
+            backupIntent = .explicit
+            requestContinuation()
+            schedulePolicyUpdate(); scheduleThrottledRefresh(); requestDrain()
+            return
+        }
         controlTransition = true; systemError = nil
         backupRequested = true; needsFreshScan = true; pausedByUser = false; resumeAfterExpiration = false
         backupIntent = .explicit

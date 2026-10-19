@@ -4,7 +4,7 @@
 # and OpenSSL 3.5.9 (pinned commit 45e844fa2a14ec92d146bd8f5778ac130b6625fb).
 # Designed for the selected cloud build runner (macOS-26 / Xcode 26).
 # Builds in an owned temporary directory with cleanup trap, targets iOS 26 arm64 device architecture,
-# Native recipe has static review only; actual device link gate runs during P7 assembly.
+# Device link/platform gates run on every assembly; cached bytes are verified separately.
 # Seals the native cache per docs/BUILD-CACHE.md; a seal does not prove link correctness.
 
 set -euo pipefail

@@ -56,3 +56,12 @@ prints the moving HEAD as a candidate; it does not advance a dependency.
 No dependency is updated automatically and there is no scheduled workflow or extra
 Actions artifact storage. Submit reviewed changes as an ordinary pull request.
 gotohp is credited on GitHub as an additional reference, not a runtime dependency.
+
+## Reviewed adapted-file digests
+
+Run `python3 scripts/check_dependencies.py` after any adapted Google source or
+TDLib header change. CI runs the same check before its macOS job. A mismatch must
+be reviewed against source history before deliberately updating the manifest's
+`vendoredSha256`; do not regenerate digests just to silence a failure. This also
+checks source pins against native assembly and embedded license provenance.
+It does not fetch or advance an upstream revision.

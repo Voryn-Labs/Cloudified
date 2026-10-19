@@ -111,7 +111,7 @@ public struct DashboardView: View {
     private var setupSection: some View {
         Section {
             FlowIntro(systemName: "photo.badge.checkmark", title: state.photosAccess.canRead ? "Read your library" : "Your originals, backed up",
-                message: "Allow Photos access, then connect Google Photos or Telegram in Settings.")
+                message: "Allow Photos access, then connect Google Photos or Telegram in Settings. Backup includes accessible hidden photos and every burst frame.")
             if state.photosAccess == .denied || state.photosAccess == .restricted {
                 Button("Open iPhone Settings") { openURL(URL(string: UIApplication.openSettingsURLString)!) }
             } else {

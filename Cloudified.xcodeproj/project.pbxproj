@@ -21,6 +21,7 @@
 		F53F75426FDCF4699020B10D /* DemandSourceProducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6B44273584493DCE914785 /* DemandSourceProducer.swift */; };
 		5A438CE0C0BB75078C349D4F /* BackupIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B48BE7C60DEB4677A706F2 /* BackupIntents.swift */; };
 		4F38044294EA2CF270FD43A9 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E4BAD6D36BD3888E49DDC0C /* RootTabView.swift */; };
+		43056394EAAAE21D628729B0 /* WalkthroughView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E8C4FB00BDDDAD72C821F1 /* WalkthroughView.swift */; };
 		5BC4C78CDABEFEC0FEF7D01F /* AppAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97F3B140AF3153970D444BC /* AppAppearance.swift */; };
 		6942DDF56796F77E789C476F /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5004A38BC5BECD896FC946FB /* ActivityView.swift */; };
 		FC37C930C66813AF0BD6A7D6 /* ScreenStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811ACF2C140DBAC0AF4B4E74 /* ScreenStateStore.swift */; };
@@ -107,6 +108,7 @@
 		5A6B44273584493DCE914785 /* DemandSourceProducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DemandSourceProducer.swift"; sourceTree = "<group>"; };
 		F7B48BE7C60DEB4677A706F2 /* BackupIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BackupIntents.swift"; sourceTree = "<group>"; };
 		9E4BAD6D36BD3888E49DDC0C /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RootTabView.swift"; sourceTree = "<group>"; };
+		B1E8C4FB00BDDDAD72C821F1 /* WalkthroughView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WalkthroughView.swift"; sourceTree = "<group>"; };
 		B97F3B140AF3153970D444BC /* AppAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppAppearance.swift"; sourceTree = "<group>"; };
 		5004A38BC5BECD896FC946FB /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ActivityView.swift"; sourceTree = "<group>"; };
 		811ACF2C140DBAC0AF4B4E74 /* ScreenStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScreenStateStore.swift"; sourceTree = "<group>"; };
@@ -234,6 +236,7 @@
 				58F3D64FB80CABE11C7E8DC5 /* Logs */,
 				03A019F2129FB4DA67E90401 /* Settings */,
 				9E4BAD6D36BD3888E49DDC0C /* RootTabView.swift */,
+				B1E8C4FB00BDDDAD72C821F1 /* WalkthroughView.swift */,
 				B97F3B140AF3153970D444BC /* AppAppearance.swift */,
 				5004A38BC5BECD896FC946FB /* ActivityView.swift */,
 				811ACF2C140DBAC0AF4B4E74 /* ScreenStateStore.swift */,
@@ -481,6 +484,7 @@
 				F53F75426FDCF4699020B10D /* DemandSourceProducer.swift in Sources */,
 				5A438CE0C0BB75078C349D4F /* BackupIntents.swift in Sources */,
 				4F38044294EA2CF270FD43A9 /* RootTabView.swift in Sources */,
+				43056394EAAAE21D628729B0 /* WalkthroughView.swift in Sources */,
 				5BC4C78CDABEFEC0FEF7D01F /* AppAppearance.swift in Sources */,
 				6942DDF56796F77E789C476F /* ActivityView.swift in Sources */,
 				FC37C930C66813AF0BD6A7D6 /* ScreenStateStore.swift in Sources */,
@@ -695,7 +699,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -734,7 +738,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

@@ -37,7 +37,7 @@ public enum DiagnosticStage: String, Codable, Sendable {
     case diagnosticExport, diagnosticUpload, backgroundContinuation, automaticBackground
     case googleTransferActive, googleTransferCompleted, googleTransferAbsent, googleTransferFailed
     case googleDuplicateCheck, googleUploadPreparation, googleFileTransfer, googleCommit
-    case telegramCensus, telegramRecovery, telegramProtocol, originalIntegrityCheck
+    case telegramCensus, telegramRecovery, telegramProtocol, telegramLocalReset, originalIntegrityCheck, startupInventory
 }
 public enum DiagnosticStatus: String, Codable, Sendable { case started, succeeded, failed, changed }
 public enum DiagnosticNativeMethod: String, Codable, Sendable {

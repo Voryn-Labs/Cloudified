@@ -56,6 +56,7 @@ extension AppEnvironment {
     }
     public func applicationActive() {
         isForeground = true
+        refreshNotificationPermission()
         if selectedTab == .activity {
             if visibleActivityPage == .logs && !logsState.hasLoaded { reloadLogs() }
             if visibleActivityPage == .issues && !notUploadedState.hasLoaded { reloadFailures() }

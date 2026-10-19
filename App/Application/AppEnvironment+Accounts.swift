@@ -198,6 +198,37 @@ extension AppEnvironment {
             await refreshStoredSettings()
         } catch { endProviderChange(token); await report(error, provider: .telegram); throw ProviderSupport.safe(error, domain: .tdlib) }
     }
+    public var telegramLocalResetAvailable: Bool {
+        providerErrors[.telegram]?.cause == .databaseKeyUnavailable
+    }
+    public func resetTelegramConnectionAfterKeyLoss() async throws {
+        guard telegramLocalResetAvailable else { throw CoreError.invalidTransition }
+        let token = UUID()
+        await trace(.telegramLocalReset, .started, provider: .telegram, id: token)
+        do {
+            _ = try await beginProviderChange(.telegram, token: token)
+            defer { endProviderChange(token) }
+            try await replaceTelegramSession()
+            try await requireNoRetainedInputs(.telegram)
+            guard let client = tdlibClient else { throw CoreError.recoveryRequired }
+            try await client.resetLocalDatabaseAfterKeyLoss()
+            if let destination = try await ledger?.selectedDestination(.telegram) {
+                try await ledger?.deselectDestination(destination.id)
+            }
+            providerErrors.removeValue(forKey: .telegram)
+            settingsState.telegramAuthErrorMessage = nil
+            settingsState.telegramAccountName = nil; settingsState.telegramChannelName = nil
+            settingsState.telegramChatID = nil
+            try await ensureTelegramStarted()
+            await refreshStoredSettings()
+            await trace(.telegramLocalReset, .succeeded, provider: .telegram, id: token)
+        } catch {
+            await trace(.telegramLocalReset, .failed, provider: .telegram, id: token,
+                        failure: ProviderSupport.safe(error, domain: .tdlib))
+            endProviderChange(token); await report(error, provider: .telegram)
+            throw ProviderSupport.safe(error, domain: .tdlib)
+        }
+    }
     public func logoutTelegram() async throws {
         // Actual account switch is an explicit logout, never deletion of DB keys.
         let token = UUID()

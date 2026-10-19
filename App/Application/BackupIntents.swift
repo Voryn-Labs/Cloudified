@@ -4,6 +4,7 @@ import CloudifiedCore
 /// Shortcuts run the same actions as the Backup buttons. Start opens the app:
 /// continued processing is tied to a person's action in the foreground.
 struct StartBackupIntent: AppIntent {
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
     static let title: LocalizedStringResource = "Start Backup"
     static let description: IntentDescription? = "Opens Cloudified and backs up to the connected destinations."
     static let supportedModes: IntentModes = .foreground(.immediate)
@@ -19,6 +20,7 @@ struct StartBackupIntent: AppIntent {
 }
 
 struct PauseBackupIntent: AppIntent {
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
     static let title: LocalizedStringResource = "Pause Backup"
     static let description: IntentDescription? = "Pauses Cloudified until you resume it."
     static let supportedModes: IntentModes = .background
@@ -34,6 +36,7 @@ struct PauseBackupIntent: AppIntent {
 }
 
 struct BackupStatusIntent: AppIntent {
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
     static let title: LocalizedStringResource = "Backup Status"
     static let description: IntentDescription? = "Reads saved and remaining counts from Cloudified's backup record."
     static let supportedModes: IntentModes = .background

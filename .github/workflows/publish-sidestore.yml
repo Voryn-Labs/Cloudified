@@ -62,7 +62,7 @@ jobs:
           git add source.json
           if ! git diff --cached --quiet; then
             git commit -m 'source: publish verified release'
-            git push origin HEAD:main
+            python3 distribution/push_generated.py
           fi
       - name: Promote the verified release
         if: env.BUILD_CONCLUSION == 'success'

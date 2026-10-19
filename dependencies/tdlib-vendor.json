@@ -64,8 +64,7 @@
       "license": "Apache License 2.0 (see licenses/LICENSE-OpenSSL.txt)",
       "purpose": "Cryptographic backend for TDLib native network and database encryption on iOS",
       "licenseVerifiedAtPin": true,
-      "artifactSha256": null,
-      "status": "exact pin verified; OpenSSL 3.5.9 LTS, license Apache 2.0; native closure/linking remains unbuilt until P7; manifest entries are not artifact evidence.",
+      "status": "Exact source pin and license verified. Native artifacts are SHA-256 inventoried and device-link/platform gates checked in CI; runtime behavior needs device evidence.",
       "selectionEvidence": {
         "selectedOn": "2026-10-08",
         "method": "git ls-remote annotated release tag and peeled commit",
@@ -75,10 +74,11 @@
       "licenseSha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
       "configurationSource": "Configurations/15-ios.conf",
       "configurationSha256": "5276128a9e3ae665a128ba6e6330b65130ad78f4f6d822ccdf2ebe26b67518b5",
-      "configurationTarget": "ios64-xcrun (explicit xcrun iphoneos compiler at pin)"
+      "configurationTarget": "ios64-xcrun (explicit xcrun iphoneos compiler at pin)",
+      "artifactDigestLocation": "Per-build build/tdlib/provenance.json; verified by scripts/build_cache.py"
     }
   ],
-  "linkClosureStatus": "Static source/CMake closure reviewed for Darwin without optional crc32c/Abseil. Script enforces exact 14 archives and an unexecuted all-member device link/platform gate before cache sealing. Native assembly/link gate has not run; actual evidence remains P7.",
+  "linkClosureStatus": "Published iPhone CI builds have executed the exact static-archive closure and device-link/platform gates. Every build must verify its own archive/member SHA-256 and platform evidence before cache reuse. This manifest describes required inputs, not a reusable artifact seal.",
   "embeddedDependencies": [
     {
       "name": "TDLib embedded SQLCipher/SQLite",

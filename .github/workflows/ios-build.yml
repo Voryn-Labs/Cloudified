@@ -20,6 +20,12 @@ jobs:
           persist-credentials: false
       - name: Check documents
         run: python3 scripts/check_docs.py
+      - name: Verify dependency provenance
+        run: python3 scripts/check_dependencies.py
+      - name: Verify publication guards
+        run: python3 scripts/check_release_guards.py
+      - name: Check public file types and credential patterns
+        run: python3 scripts/public_export_checks.py
       - name: Require implemented project
         run: |
           if [ ! -d Cloudified.xcodeproj ]; then
@@ -98,3 +104,5 @@ jobs:
             build/Cloudified-unsigned.ipa.sha256
             build/xcodebuild.log
             build/Build.xcresult
+            build/tdlib/provenance.json
+            build/tdlib/link-validation.json

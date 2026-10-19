@@ -9,6 +9,8 @@ download Xcode or contact Google/Telegram accounts:
 
 ```sh
 python3 scripts/check_docs.py
+python3 scripts/check_dependencies.py
+python3 scripts/check_release_guards.py
 python3 scripts/check_core_regressions.py --sdk /path/to/MacOSX.sdk
 python3 scripts/check_swift_source.py --sdk /path/to/MacOSX.sdk --emit-ir
 ```
@@ -36,8 +38,20 @@ restored only for their exact validated fingerprint; every archive is verified
 before reuse. Compiler/package caches are separate and may miss when the project,
 toolchain or source changes. Never rely on cache presence for correctness. Build
 artifacts expire after three days; successful release IPAs are published separately.
+Build evidence also includes `provenance.json` and `link-validation.json` from the
+native dependency output. These record SHA-256 file/member digests and device-link
+checks for that build; source manifests point to this evidence rather than claiming
+one binary hash applies to every toolchain. License texts, Cloudified's MIT license
+and aggregate third-party notices are copied into the app bundle.
 Keep caches within the configured free allowance; standard public runners and
 cache/artifact storage have distinct billing rules.
+
+The manual build's preflight checks reviewed vendor hashes and scans the tracked
+public tree for forbidden file types and common credential patterns. A local export
+checks these before pushing; local hooks can be bypassed and pattern scans cannot
+detect every secret, so source review remains required. Generated feed/statistics
+commits rebase unrelated public-main updates and retry pushes up to three times.
+Conflicting generated files stop publication; they must be regenerated and verified.
 
 The publication workflow checks IPA version, build, source revision, bundle ID,
 size, SHA-256 and asset catalog. The same repository validates the published release digest

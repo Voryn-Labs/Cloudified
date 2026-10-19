@@ -32,6 +32,10 @@ for name, folder, libraries in [('CloudifiedDiagnostics', 'Diagnostics', []),
 def section(text, start, end):
     a = text.index(start)
     return text[a:text.index(end, a)]
+backup = (ROOT / 'App/Application/AppEnvironment+Backup.swift').read_text()
+(out / 'ActualBackupRequest.swift').write_text('import Foundation\nimport CloudifiedCore\nextension BackupRequestHarness {\n'
+    + section(backup, '    public func requestBackup() {', '    func requestDrain()')
+    + section(backup, '    func requireNoRetainedInputs(', '    public func retryItem(') + '}\n')
 telegram = (ROOT / 'App/Adapters/Telegram/TelegramProviderAdapter.swift').read_text()
 body = section(telegram, '    private struct Census {', '    private var census:')
 body += '    private var census: Census?\n'
@@ -94,6 +98,9 @@ actor ProtocolRecoveryHarness {
  func acknowledged()->Bool {isTerminated && clientID == nil}
 ''' + section(session, '    var restartableProtocolFailure: Bool {', '    public private(set) var connectionReady') + '}\n')
 client = (ROOT / 'App/Adapters/Telegram/TDLibClient.swift').read_text()
+(out / 'ActualLocalReset.swift').write_text('import Foundation\nimport CloudifiedCore\nextension LocalResetHarness {\n'
+    + section(client, '    func resetLocalDatabaseAfterKeyLoss()', '    /// Initializes and starts')
+        .replace('Self.storageURLs(', 'storageURLsForBoundary(') + '}\n')
 (out / 'ActualNetworkPolicy.swift').write_text('''import Foundation
 actor NetworkPolicyHarness {
  let session:NetworkPolicyBoundary
@@ -159,7 +166,7 @@ body = body[:body.rindex('}')] + ' func forceStallForBoundary(){lock.withLock{la
 (out / 'ActualPhotoExport.swift').write_text('import Foundation\nimport CloudifiedCore\n' + body)
 bridge = (ROOT / 'App/Adapters/Telegram/TDLibBridge.swift').read_text()
 (out / 'Errors.swift').write_text('import Foundation\n' + section(bridge, 'public enum TDLibResponseLimit:', 'public final class TDLibBridge:'))
-files = [ROOT / 'App/Adapters/System/AppRuntime.swift', out / 'ActualTelegramSettlement.swift', ROOT / 'scripts/regressions/AuditBoundaries.swift', ROOT / 'App/Adapters/GooglePhotos/ForegroundFileUploadTransport.swift', ROOT / 'App/Adapters/PhotoLibrary/StreamingHasher.swift', ROOT / 'App/Adapters/PhotoLibrary/SourceRecipe.swift', ROOT / 'App/Adapters/PhotoLibrary/LosslessVideoPartSplitter.swift', out / 'ActualProgressCoalescer.swift', out / 'ActualPhotoExport.swift', ROOT / 'scripts/regressions/TelegramRecoveryBoundary.swift', ROOT / 'App/Adapters/Telegram/TelegramInputFiles.swift', ROOT / 'App/Presentation/Dashboard/DashboardViewState.swift', out / 'ActualNetworkPolicy.swift', out / 'ActualOwnedRecovery.swift', ROOT / 'scripts/regressions/CoreRegression.swift', ROOT / 'scripts/regressions/PresentationRecovery.swift', ROOT / 'App/Presentation/ScreenStateStore.swift', ROOT / 'App/Presentation/NotUploaded/NotUploadedViewState.swift', ROOT / 'scripts/regressions/CredentialKeyBoundary.swift', ROOT / 'App/Adapters/Security/KeychainCredentialStore.swift', ROOT / 'scripts/regressions/NativeProtocolBoundary.swift', ROOT / 'scripts/regressions/TelegramCensusBoundary.swift', ROOT / 'scripts/regressions/LaneIsolation.swift',
+files = [ROOT / 'scripts/regressions/AuditRequestBoundary.swift', out / 'ActualBackupRequest.swift', out / 'ActualLocalReset.swift', ROOT / 'App/Adapters/System/DiagnosticReportUploader.swift', ROOT / 'App/Adapters/System/AppRuntime.swift', out / 'ActualTelegramSettlement.swift', ROOT / 'scripts/regressions/AuditBoundaries.swift', ROOT / 'App/Adapters/GooglePhotos/ForegroundFileUploadTransport.swift', ROOT / 'App/Adapters/PhotoLibrary/StreamingHasher.swift', ROOT / 'App/Adapters/PhotoLibrary/SourceRecipe.swift', ROOT / 'App/Adapters/PhotoLibrary/LosslessVideoPartSplitter.swift', out / 'ActualProgressCoalescer.swift', out / 'ActualPhotoExport.swift', ROOT / 'scripts/regressions/TelegramRecoveryBoundary.swift', ROOT / 'App/Adapters/Telegram/TelegramInputFiles.swift', ROOT / 'App/Presentation/Dashboard/DashboardViewState.swift', out / 'ActualNetworkPolicy.swift', out / 'ActualOwnedRecovery.swift', ROOT / 'scripts/regressions/CoreRegression.swift', ROOT / 'scripts/regressions/PresentationRecovery.swift', ROOT / 'App/Presentation/ScreenStateStore.swift', ROOT / 'App/Presentation/NotUploaded/NotUploadedViewState.swift', ROOT / 'scripts/regressions/CredentialKeyBoundary.swift', ROOT / 'App/Adapters/Security/KeychainCredentialStore.swift', ROOT / 'scripts/regressions/NativeProtocolBoundary.swift', ROOT / 'scripts/regressions/TelegramCensusBoundary.swift', ROOT / 'scripts/regressions/LaneIsolation.swift',
          ROOT / 'App/Adapters/Telegram/TDLibJSON.swift', ROOT / 'App/Adapters/Telegram/TelegramDocumentReference.swift',
          out / 'ActualCensus.swift', out / 'ActualResolution.swift', out / 'ActualProtocolRecovery.swift', out / 'Support.swift', out / 'Errors.swift']
 run(['swiftc', *common, '-parse-as-library', *map(str, files), '-L', str(out),

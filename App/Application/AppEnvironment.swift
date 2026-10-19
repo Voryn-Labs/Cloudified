@@ -95,6 +95,8 @@ public final class AppEnvironment: ObservableObject {
     var needsWake = false
     var retryDeadlines: [Provider: Date] = [:]
     var needsFreshScan = false
+    var notificationPreferenceRevision: UInt64 = 0
+    var startupInventoryDeferrals: Set<Provider> = []
     var transferWakePending = false
     var pausedByUser = UserDefaults.standard.bool(forKey: "CloudifiedUserPaused")
     var commandProvider: Provider?

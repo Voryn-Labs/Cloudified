@@ -139,7 +139,9 @@ extension AppEnvironment {
                 for row in page where row.retainedTransferCount > 0 {
                     if row.destination.provider == .google {
                         guard let googleAdapter, let engine = backupEngine,
-                              try await engine.snapshot().active[.google] == nil else { return }
+                              try await engine.snapshot().active[.google] == nil else {
+                            await recordInventoryDeferral(.google); return
+                        }
                         var transferCursor: UUID?
                         while true {
                             let transfers = try await ledger.retainedTransfers(destinationID: row.destination.id, afterID: transferCursor)
@@ -153,7 +155,10 @@ extension AppEnvironment {
                     while true {
                         let transfers = try await ledger.retainedTransfers(destinationID: row.destination.id, afterID: transferCursor)
                         if transfers.isEmpty { break }
-                        guard transfers.allSatisfy({ owned.contains($0.id) }) else { return }
+                        guard transfers.allSatisfy({ owned.contains($0.id) }) else {
+                            await recordInventoryDeferral(.telegram, unmatched: transfers.filter { !owned.contains($0.id) }.count)
+                            return
+                        }
                         transferCursor = transfers.last?.id
                     }
                 }
@@ -164,16 +169,28 @@ extension AppEnvironment {
             // snapshot. Unmatched readers keep cleanup fenced; they are not proof
             // of an asset failure or a reason to blindly resend it.
             let googleReaders = try await googleBackground?.activeTransferIDs() ?? []
-            guard googleReaders.isSubset(of: inventoriedGoogle) else { return }
+            guard googleReaders.isSubset(of: inventoriedGoogle) else {
+                await recordInventoryDeferral(.google, unmatched: googleReaders.subtracting(inventoriedGoogle).count)
+                return
+            }
             // Google's real OS task/result inventory and the native reader
             // inventory cover every retained input before staging cleanup.
             await files.completeStartupInventory(); startupInventoryCompleted = true
+            startupInventoryDeferrals.removeAll()
             if let startupInventoryFailure, systemError == startupInventoryFailure { systemError = nil }
             startupInventoryFailure = nil
         } catch {
             startupInventoryFailure = ProviderSupport.safe(error, domain: .core)
             await report(error, provider: nil)
         }
+    }
+    private func recordInventoryDeferral(_ provider: Provider, unmatched: Int? = nil) async {
+        guard startupInventoryDeferrals.insert(provider).inserted else { return }
+        do {
+            try await ledger?.appendEvent(.recovery, context: EventContext(origin: provider.origin,
+                diagnostic: DiagnosticDetail(stage: .startupInventory, status: .changed,
+                    correlationID: UUID(), items: unmatched)), decision: .wait)
+        } catch { fallback.record(ProviderSupport.safe(error, domain: .sqlite)) }
     }
     func refreshStoredSettings() async {
         guard let ledger else { return }

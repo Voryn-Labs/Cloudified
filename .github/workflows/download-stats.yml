@@ -32,5 +32,5 @@ jobs:
           git add metrics/
           if ! git diff --cached --quiet; then
             git commit -m 'docs: refresh IPA download counts'
-            git push origin HEAD:main
+            python3 distribution/push_generated.py
           fi

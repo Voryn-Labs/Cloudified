@@ -15,7 +15,7 @@ enum FailureExplanation {
             }
         }
         switch failure.cause {
-        case .databaseKeyUnavailable: return "The existing Telegram database encryption key is unavailable. Reinstalling with the original signing identity may restore Keychain access. Keep the database and protected uploads; do not reset them. Export diagnostics for help."
+        case .databaseKeyUnavailable: return "Cloudified cannot unlock its local Telegram connection data. Try the original signing identity first. Settings → Telegram offers a local connection reset only when no unresolved uploads need that data. Your uploaded channel files are unchanged."
         case .nativeResponseInvalid: return "Cloudified could not decode a Telegram response. This is a connection protocol error, not an unsupported photo format. Protected uploads require recovery before another send."
         case .nativeResponseLimit: return "A Telegram response exceeded Cloudified's decoder capacity. Existing uploads remain protected while the connection recovers. Export diagnostics if this repeats."
         case .identityUnverified: return "Google could not verify this signed-in account\(failure.code.map { " (HTTP \($0))" } ?? ""). Open Logs for the identity or token-verification result."
@@ -65,6 +65,7 @@ enum FailureExplanation {
             return "Unlock the iPhone, reopen Cloudified and retry. Check the local storage error code."
         }
         switch failure.cause {
+        case .databaseKeyUnavailable: return "Restore the original signing identity or review Reset local Telegram connection in Settings → Telegram. If protected uploads block reset, keep the app data and share diagnostics."
         case .loginRequired, .identityUnverified, .accountChanged: return "Reconnect the correct destination in Settings."
         case .pendingSendUnmatched, .outcomeUnknown, .incompleteHistory: return "Use Verify upload with the same account and channel. If it stays waiting, upload diagnostics from Report a problem. Deleting or relinking the app does not prove the file was saved."
         case .insufficientSpace: return "Free device space, then retry this asset."

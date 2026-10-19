@@ -14,6 +14,8 @@ public struct SettingsView: View {
     @State private var showingGoogleDisconnectAlert = false
     @State private var showingTelegramDisconnectAlert = false
     @State private var showingTelegramLogoutAlert = false
+    @State private var showingTelegramResetAlert = false
+    @State private var showingWalkthrough = false
     @State private var actionTask: Task<Void, Never>?
     @State private var isWorking = false
     @State private var actionError: String?
@@ -61,12 +63,16 @@ public struct SettingsView: View {
                     }
                 }
                 Section("Support") {
+                    Button { showingWalkthrough = true } label: { MenuRow(title: "Getting started", symbol: "play.rectangle", subtitle: "Setup, storage and account risks") }
                     NavigationLink { HelpView(environment: environment) } label: { MenuRow(title: "Help & guides", symbol: "questionmark") }
                     NavigationLink { FeedbackView(environment: environment) } label: { MenuRow(title: "Report a problem", symbol: "bubble.left.and.text.bubble.right") }
                 }
             }
             .cloudifiedList()
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(isPresented: $showingWalkthrough) {
+                WalkthroughView { _ in showingWalkthrough = false }
+            }
             .sheet(item: $linkSheet) { sheet in
                 switch sheet {
                 case .google: GoogleAuthSheet(environment: environment)
@@ -132,7 +138,7 @@ public struct SettingsView: View {
             Section {
                 FlowIntro(systemName: "photo.badge.checkmark", title: "Photos access", message: state.photosAccess.description)
                 photosAccessActions
-            } footer: { Text("Only originals in the accessible library are backed up. Cloudified does not edit or delete your Photos library.") }
+            } footer: { Text("Backup includes accessible hidden photos and every burst frame. Limited Photos access restricts backup to the items iOS makes available. Cloudified does not edit or delete your Photos library.") }
         }
         .cloudifiedList().navigationTitle("Photos access").navigationBarTitleDisplayMode(.inline)
     }
@@ -225,6 +231,14 @@ public struct SettingsView: View {
             if let error = state.telegramAuthErrorMessage {
                 Section("Connection issue") { IssueBlock(message: error) }
             }
+            if environment.telegramLocalResetAvailable {
+                Section {
+                    Button("Reset local Telegram connection", role: .destructive) { showingTelegramResetAlert = true }
+                        .disabled(!controlsAvailable)
+                } footer: {
+                    Text("Use only if restoring the original signing identity did not help. Reset is blocked while unresolved uploads need this connection.")
+                }
+            }
             if isWorking { Section { WorkingBlock(title: "Updating Telegram", message: "The session stays open until this finishes.") } }
             if state.isTelegramConnected || [.readyForChannel, .connected].contains(state.telegramAuthStep) {
                 Section {
@@ -250,6 +264,12 @@ public struct SettingsView: View {
             Button("Cancel", role: .cancel) { }
             Button("Log out", role: .destructive) { perform { try await environment.logoutTelegram() } }
         } message: { Text("Other Telegram apps and devices stay signed in. This app's current destination will be disconnected.") }
+        .alert("Reset local Telegram connection?", isPresented: $showingTelegramResetAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset connection", role: .destructive) { perform { try await environment.resetTelegramConnectionAfterKeyLoss() } }
+        } message: {
+            Text("This removes the unreadable local Telegram database and cache. Sign in and choose your channel again. Messages already uploaded to Telegram and Cloudified's backup record stay intact. Reset cannot continue while an upload still needs the local data.")
+        }
     }
 
     private var livePhotoSettings: some View {

@@ -28,6 +28,16 @@ kept locally using Keychain/native storage. Keychain entries use device-only
 protection. Changing signing identity can affect access to existing entries.
 Cloudified does not distribute credentials, certificates or a server-side account.
 
+The TDLib database key protects local connection data; it does not add encryption
+to uploaded media. Telegram channels do not offer an end-to-end encryption toggle.
+If the local key is lost, Settings → Telegram offers a confirmed local connection
+reset. It is permitted only after native closure and after checking every mapping
+for unresolved uploads. It removes the unreadable local database/cache, retains
+the backup ledger and remote channel messages, and requires signing in and mapping
+the channel again. Inaccessible or corrupt keys are not silently replaced. A local
+reset cannot revoke the unreadable old login; review old sessions in Telegram →
+Settings → Devices if needed.
+
 ## Diagnostic reports
 
 Logs use safe error codes and bounded structured facts. They exclude media,
