@@ -18,6 +18,17 @@
       "category": "photo-video",
       "versions": [
         {
+          "version": "0.3",
+          "buildVersion": "29",
+          "marketingVersion": "0.3 (29)",
+          "date": "2026-10-19T19:37:23Z",
+          "localizedDescription": "Walkthrough redesign\n\n- Replaced the text-heavy introduction with three focused screens: backup basics,\n  storage trade-offs and setup.\n- Added a simple destination diagram, shorter headings and concise benefit labels.\n- Made Back, Skip and Continue consistent, with a fixed bottom action and scrollable\n  content for smaller screens and larger text.\n- Kept Google's account restriction/suspension warning visible. Full credential,\n  quota, Telegram encryption and service-limit explanations open in a separate\n  Storage & account details sheet.\n- Retained Settings → Getting started so the walkthrough can be replayed.\n\nThis is a presentation correction. Upload queues, retry/recovery rules, provider\nconnections, original-quality handling and background execution are unchanged.\nExisting walkthrough completion is retained; replay it in Settings to see the new\nscreens. Requires iOS 26 or later. No new device-compatibility claim.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/build-39311792832/Cloudified-unsigned.ipa",
+          "size": 17872631,
+          "sha256": "89194139767c203eeaafbd8fc6c02f6990199b8517f87d610703a40bec1dc86d",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.2",
           "buildVersion": "28",
           "marketingVersion": "0.2 (28)",
