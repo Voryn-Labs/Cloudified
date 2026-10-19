@@ -64,7 +64,7 @@ def update(source, manifest, release):
             'buildVersion': manifest['buildVersion'],
             'marketingVersion': f"{manifest['version']} ({manifest['buildVersion']})",
             'date': release.get('published_at') or datetime.now(timezone.utc).isoformat(timespec='seconds'),
-            'localizedDescription': manifest['releaseNotes'],
+            'localizedDescription': re.sub(r'(?m)^#{1,6} ', '', manifest['releaseNotes']).replace('**', ''),
             'downloadURL': url, 'size': manifest['size'], 'sha256': manifest['sha256'],
             'minOSVersion': '26.0',
         })

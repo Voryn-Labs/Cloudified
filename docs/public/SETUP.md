@@ -9,8 +9,11 @@ Import the unsigned IPA into Feather, SideStore, AltStore or another compatible
 signer and use your own signing setup. Source readers display **Voryn Labs**:
 
 ```text
-https://raw.githubusercontent.com/Voryn-Labs/Cloudified/main/source.json
+https://voryn-labs.github.io/source.json
 ```
+
+The same Voryn Labs source also lists Musyn. Add this URL once, then refresh the
+source in your installer when new versions are announced.
 
 LiveContainer can import the IPA as a guest. Cloudified recognizes the hosted
 runtime and uses foreground transfers, avoiding guest background-task registration.
