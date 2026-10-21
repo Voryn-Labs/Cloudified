@@ -4,7 +4,7 @@
 
 ## Install the public preview
 
-Public Cloudified 0.3 uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
+Public Cloudified 0.4 uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
 Import the unsigned IPA into Feather, SideStore, AltStore or another compatible
 signer and use your own signing setup. Source readers display **Voryn Labs**:
 
@@ -94,8 +94,11 @@ If you must change it, Keychain continuity and background task permissions requi
 verification. The signed app's permitted task identifiers must match its actual
 bundle ID; a source-side string change cannot grant a missing capability.
 
-iOS chooses when to grant background time. Cloudified asks for continued processing
-and records grant/expiry diagnostics. For a long initial backup, use Keep Awake
+iOS chooses when to grant background time. Start or Resume a backup explicitly,
+or choose **Backup → ⋯ → Continue in background** during automatic backup, to
+request continued processing with the system progress activity. Automatic backup
+on opening the app still works without pressing Start. Cloudified records actual
+grants and expirations; displaying progress cannot guarantee execution time. For a long initial backup, use Keep Awake
 while charging and leave Cloudified open. Force-quitting the app prevents its
 normal background continuation. Pause/resume and per-destination switches remain
 available in Settings and Backup.

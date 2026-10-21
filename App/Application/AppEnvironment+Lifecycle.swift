@@ -165,6 +165,7 @@ extension AppEnvironment {
     /// Explicit owner shutdown. Never discard an unresolved native receiver.
     public func shutdown() async {
         shuttingDown = true; backupRequested = false; needsWake = false
+        pendingProviderEnables.removeAll(); providerEnableTask?.cancel()
         automaticBackground.cancelPending()
         automaticStartTask?.cancel(); retryTask?.cancel(); bootstrapTask?.cancel(); policyTask?.cancel(); libraryAccessTask?.cancel()
         refreshTask?.cancel(); cleanupTask?.cancel(); sourceStatusTask?.cancel()
@@ -174,6 +175,7 @@ extension AppEnvironment {
         if let sourceProducer { _ = await sourceProducer.stop() }
         backupExecutionTask?.cancel(); await backupExecutionTask?.value
         await backgroundExpirationTask?.value
+        await providerEnableTask?.value
         await bootstrapTask?.value; await policyTask?.value; await libraryAccessTask?.value
         for task in recoveryTasks.values { await task.value }
         do { try await googleBackground?.finishWhenIdle() } catch { fallback.record(ProviderSupport.safe(error, domain: .google)) }

@@ -7,6 +7,17 @@ struct SafeProviderFailure: Error, Sendable {
     let retryAfter: Date?
 }
 enum ProviderSupport {
+    static func coreCase(_ error: any Error) -> DiagnosticCoreError? {
+        guard let core = error as? CoreError else { return nil }
+        switch core {
+        case .invalidContract: return .invalidContract
+        case .invalidTransition: return .invalidTransition
+        case .recoveryRequired: return .recoveryRequired
+        case .staleMapping: return .staleMapping
+        case .stagedUnavailable: return .stagedUnavailable
+        case .persistence: return .persistence
+        }
+    }
     static func hashFile(_ url: URL) async throws -> (sha256: String, sha1: String, byteCount: Int64) {
         let work = Task.detached(priority: .utility) { try StreamingFileHasher.hash(fileURL: url) }
         return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }

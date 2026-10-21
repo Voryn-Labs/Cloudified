@@ -14,17 +14,18 @@ its own queue, progress and recovery, so a problem with one can leave the other 
 [Setup guide](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md) ·
 [Privacy](docs/public/PRIVACY.md) · [Report an issue](https://github.com/Voryn-Labs/Cloudified/issues)
 
-## Cloudified 0.3
+## Cloudified 0.4
 
 The public identity is **`com.vorynlabs.cloudified`**, for **iOS 26 or later**.
 Public releases start at **0.1**. Link your destinations and let Cloudified check
 existing remote files before uploading new ones.
 
-Version **0.3** redesigns the three-screen walkthrough with shorter copy, clearer
-visuals and a separate storage/account-details sheet. Google account risk remains
-visible. [Full changelog](docs/public/CHANGELOG.md).
-Replay it in **Settings → Getting started**. The current release still requires
-iOS 26; an iOS 16 backport needs separate background, UI and native-library work.
+Version **0.4** improves background backup with a bounded queue of Google originals,
+safer completion recovery and clearer progress for the current run. Start/Resume,
+or **Backup → ⋯ → Continue in background**, requests iOS continued processing.
+Automatic backup on opening the app remains available. Background time is controlled
+by iOS; byte-offset resume after a failed transfer is not guaranteed.
+[Full changelog](docs/public/CHANGELOG.md).
 
 ## Focused on backup
 

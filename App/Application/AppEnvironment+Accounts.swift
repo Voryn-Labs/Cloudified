@@ -5,21 +5,54 @@ extension AppEnvironment {
     public func setGoogleEnabled(_ value: Bool) { setEnabled(.google, value) }
     public func setTelegramEnabled(_ value: Bool) { setEnabled(.telegram, value) }
     func setEnabled(_ provider: Provider, _ value: Bool) {
-        guard commandProvider == nil else { return }
-        Task { [weak self] in
+        guard !shuttingDown else { return }
+        pendingProviderEnables[provider] = (value, providerMappingRevisions[provider, default: 0])
+        scheduleProviderEnableChanges()
+        scheduleThrottledRefresh()
+    }
+    func scheduleProviderEnableChanges() {
+        guard providerEnableTask == nil, bootstrapComplete, !shuttingDown,
+              backgroundExpirationTask == nil, commandProvider == nil, !controlTransition,
+              !settingsState.isConnectingGoogle, !settingsState.isConnectingTelegram,
+              isForeground || backgroundExecutionAllowed,
+              let provider = Provider.allCases.first(where: { pendingProviderEnables[$0] != nil && recoveryTasks[$0] == nil }) else { return }
+        // Reserve this executor before creating the unstructured task. Further
+        // taps replace one pending preference instead of racing another command.
+        providerEnableTask = Task { [weak self] in
             guard let self else { return }
-            let token = UUID()
+            defer {
+                self.providerEnableTask = nil
+                self.scheduleProviderEnableChanges()
+            }
+            guard let intent = self.pendingProviderEnables[provider],
+                  intent.revision == self.providerMappingRevisions[provider, default: 0] else {
+                self.pendingProviderEnables.removeValue(forKey: provider); return
+            }
             do {
-                _ = try await self.beginProviderChange(provider, token: token, requiresReleasedInputs: false)
-                defer { self.endProviderChange(token) }
-                guard let destination = try await self.ledger?.selectedDestination(provider) else { return }
-                try await self.backupEngine?.setEnabled(destinationID: destination.id, enabled: value)
-                // User preference persists even when recovery/auth is unavailable.
-                // Ledger recovery and provider inspection still gate actual sends.
-                if !value && provider == .google { try await self.googleAdapter?.cancelOwnedTransfers() }
-                if value { try await self.recoverMapping(destination) }
-                await self.refreshStoredSettings()
-            } catch { self.endProviderChange(token); await self.report(error, provider: provider) }
+                guard let destination = try await self.ledger?.selectedDestination(provider) else {
+                    self.pendingProviderEnables.removeValue(forKey: provider); return
+                }
+                try Task.checkCancellation()
+                // Reads above yield. Leave the latest intent pending if another
+                // action won admission; its completion schedules this executor.
+                guard self.backgroundExpirationTask == nil, self.commandProvider == nil,
+                      !self.controlTransition, self.recoveryTasks[provider] == nil,
+                      !self.settingsState.isConnectingGoogle, !self.settingsState.isConnectingTelegram else { return }
+                guard let latest = self.pendingProviderEnables.removeValue(forKey: provider),
+                      latest.revision == self.providerMappingRevisions[provider, default: 0] else { return }
+                let token = UUID()
+                do {
+                    _ = try await self.beginProviderChange(provider, token: token, requiresReleasedInputs: false)
+                    defer { self.endProviderChange(token) }
+                    guard try await self.ledger?.selectedDestination(provider)?.id == destination.id else { throw CoreError.staleMapping }
+                    try await self.backupEngine?.setEnabled(destinationID: destination.id, enabled: latest.value)
+                    if !latest.value && provider == .google { try await self.googleAdapter?.cancelOwnedTransfers() }
+                    if latest.value { try await self.recoverMapping(destination) }
+                    await self.refreshStoredSettings()
+                } catch { self.endProviderChange(token); throw error }
+            } catch {
+                if !(error is CancellationError) { await self.report(error, provider: provider) }
+            }
         }
     }
     public func setWiFiOnly(_ value: Bool) {

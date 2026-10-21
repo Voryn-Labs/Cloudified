@@ -1,6 +1,29 @@
 import Foundation
 
 extension Ledger {
+    /// Capacity backpressure does not spend an attempt or manufacture a failure.
+    public func releaseClaim(jobID: UUID) throws {
+        try transaction {
+            let job = try loadJob(jobID)
+            guard job.state == .checking, try !hasRetainedTransfers(jobID: jobID) else { throw CoreError.invalidTransition }
+            try db.execute("UPDATE jobs SET state='reconciling' WHERE id=?", [jobID.sql])
+        }
+    }
+    public func recordSubmission(jobID: UUID, resourceID: UUID, transferID: UUID, runID: UUID) throws {
+        try transaction {
+            let job = try loadJob(jobID)
+            guard job.destination.provider == .google, job.state == .uploading,
+                  let resource = job.plan.resources.first(where: { $0.id == resourceID }),
+                  let checkpoint = try providerCheckpoint(destinationID: job.destination.id, tag: resource.tag),
+                  checkpoint.jobID == jobID, checkpoint.transferID == transferID,
+                  checkpoint.phase == .transferring, !checkpoint.inputsTerminal,
+                  try retainedTransferIDs(destinationID: job.destination.id).contains(transferID) else { throw CoreError.recoveryRequired }
+            try record(.setupTrace, context: EventContext(runID: runID, origin: .google,
+                destinationID: job.destination.id, jobID: jobID, resourceID: resourceID,
+                cycleID: job.cycleID, attempt: job.attempts,
+                diagnostic: DiagnosticDetail(stage: .googleTransferQueued, status: .succeeded, correlationID: transferID)), decision: .proceed)
+        }
+    }
     private func resumableAttempt(_ job: JobRecord) throws -> Bool {
         try !db.rows("SELECT number FROM attempts WHERE job_id=? AND cycle=? AND number=? AND ended IS NULL AND suspended=1", [job.id.sql, job.cycleID.sql, .integer(Int64(job.attempts))]).isEmpty
     }

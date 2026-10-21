@@ -26,7 +26,7 @@ public enum KnownCause: String, Codable, Sendable {
     case storageUnavailable, storagePathConflict
     case setupUnavailable, initializationFailed, verificationFailed, networkRequestFailed
     case phoneNumberInvalid, phoneNumberBanned, applicationCredentialsRejected, authenticationRejected
-    case nativeResponseInvalid, nativeResponseLimit, databaseKeyUnavailable
+    case nativeResponseInvalid, nativeResponseLimit, databaseKeyUnavailable, operationBusy
 }
 
 public enum DiagnosticStage: String, Codable, Sendable {
@@ -35,7 +35,8 @@ public enum DiagnosticStage: String, Codable, Sendable {
     case telegramStart, telegramStorage, telegramNativeCreate, telegramAuthorization
     case telegramNetwork, telegramParameters, telegramAuthState, nativeRequest, networkPolicy
     case diagnosticExport, diagnosticUpload, backgroundContinuation, automaticBackground
-    case googleTransferActive, googleTransferCompleted, googleTransferAbsent, googleTransferFailed
+    case googleTransferActive, googleTransferCompleted, googleTransferAbsent, googleTransferFailed, googleTransferQueued
+    case applicationOperation
     case googleDuplicateCheck, googleUploadPreparation, googleFileTransfer, googleCommit
     case telegramCensus, telegramRecovery, telegramProtocol, telegramLocalReset, originalIntegrityCheck, startupInventory
 }
@@ -90,6 +91,9 @@ public enum DiagnosticReportRejection: String, Codable, Sendable {
     case contentTooLarge, invalidExpiry, rateLimited, invalidRequest, unknown
 }
 public enum DiagnosticBackupIntent: String, Codable, Sendable { case automatic, explicit }
+public enum DiagnosticCoreError: String, Codable, Sendable {
+    case invalidContract, invalidTransition, recoveryRequired, staleMapping, stagedUnavailable, persistence
+}
 /// Closed stages/statuses and numeric/boolean facts only; no request/response prose.
 public struct DiagnosticDetail: Codable, Sendable {
     public let stage: DiagnosticStage
@@ -116,6 +120,7 @@ public struct DiagnosticDetail: Codable, Sendable {
     public let items: Int?
     public let pages: Int?
     public let reused: Bool?
+    public let coreError: DiagnosticCoreError?
     public init(stage: DiagnosticStage, status: DiagnosticStatus, correlationID: UUID,
                 nativeMethod: DiagnosticNativeMethod? = nil, httpStatus: Int? = nil,
                 responseBytes: Int? = nil, available: Bool? = nil, wifi: Bool? = nil,
@@ -125,7 +130,8 @@ public struct DiagnosticDetail: Codable, Sendable {
                 reportRejection: DiagnosticReportRejection? = nil, requestBytes: Int? = nil,
                 foreground: Bool? = nil, backgroundExecutionAllowed: Bool? = nil,
                 lowPowerMode: Bool? = nil, backupIntent: DiagnosticBackupIntent? = nil,
-                policyCause: KnownCause? = nil, items: Int? = nil, pages: Int? = nil, reused: Bool? = nil) {
+                policyCause: KnownCause? = nil, items: Int? = nil, pages: Int? = nil, reused: Bool? = nil,
+                coreError: DiagnosticCoreError? = nil) {
         self.stage = stage; self.status = status; self.correlationID = correlationID
         self.nativeMethod = nativeMethod; self.httpStatus = httpStatus; self.responseBytes = responseBytes
         self.available = available; self.wifi = wifi; self.expensive = expensive; self.constrained = constrained
@@ -137,6 +143,7 @@ public struct DiagnosticDetail: Codable, Sendable {
         self.foreground = foreground; self.backgroundExecutionAllowed = backgroundExecutionAllowed
         self.lowPowerMode = lowPowerMode; self.backupIntent = backupIntent; self.policyCause = policyCause
         self.items = items; self.pages = pages; self.reused = reused
+        self.coreError = coreError
     }
 }
 

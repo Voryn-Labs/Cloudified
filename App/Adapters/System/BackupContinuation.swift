@@ -71,9 +71,33 @@ enum BackgroundRunJournal {
     }
 }
 
-/// Requested for every foreground backup run while work remains. System progress
-/// reflects measured work, never elapsed time or a fabricated heartbeat; confirmed
-/// upload counters stay ledger-backed.
+/// A finite grant measures new work, excluding historical confirmations. Later
+/// library additions belong to the next run rather than moving this denominator.
+struct ContinuedWorkProgress {
+    private var baseline: (confirmed: Int, remaining: Int)?
+    mutating func reset() { baseline = nil }
+    mutating func sample(confirmed: Int, total: Int, fractions: [Double]) -> (done: Int64, total: Int64)? {
+        let units: Int64 = 1_000_000
+        guard total >= 0, total <= Int(Int64.max / units) else { return nil }
+        if baseline == nil {
+            let saved = max(0, min(confirmed, total))
+            baseline = (saved, total - saved)
+        }
+        let start = baseline!
+        let goal = max(1, Int64(start.remaining) * units)
+        let completed = max(0, min(start.remaining, max(0, confirmed) - start.confirmed))
+        var done = start.remaining == 0 ? goal : Int64(completed) * units
+        for fraction in fractions.prefix(64) where fraction.isFinite && fraction > 0 {
+            let partial = Int64(min(0.999999, fraction) * Double(units))
+            let sum = done.addingReportingOverflow(partial)
+            done = sum.overflow ? goal : min(goal, sum.partialValue)
+        }
+        if completed < start.remaining { done = min(done, goal - 1) }
+        return (done, goal)
+    }
+}
+
+/// User-started continued processing reports measured work; no timer heartbeat.
 @MainActor
 final class BackupContinuation {
     enum State: String, Equatable { case unavailable, idle, requested, running, expired }
@@ -85,6 +109,8 @@ final class BackupContinuation {
     var onTrace: (@MainActor (DiagnosticStatus, SafeFailure?, DiagnosticBackgroundEvent) -> Void)?
     private var grace: UIBackgroundTaskIdentifier = .invalid
     private var lastSubtitle: String?
+    private var runProgress = ContinuedWorkProgress()
+    private var progressDestinations: Set<UUID>?
     private(set) var requestedAt: TimeInterval?
     #if os(iOS) && !targetEnvironment(macCatalyst)
     private var identifier: String?
@@ -121,6 +147,7 @@ final class BackupContinuation {
         #if os(iOS) && !targetEnvironment(macCatalyst)
         guard task == nil, state == .idle || state == .expired || (state == .unavailable && !prefixes.isEmpty) else { return }
         submissionErrorCode = nil; diagnosticID = UUID(); requestedAt = ProcessInfo.processInfo.systemUptime
+        runProgress.reset(); progressDestinations = nil
         onTrace?(.started, nil, .requestStarted)
         for prefix in prefixes {
             let id: String
@@ -180,21 +207,16 @@ final class BackupContinuation {
     /// active asset. A retry may reduce its fraction; it never becomes Saved here.
     /// Before the first complete scan there is no total; scan pages are then the
     /// measured work, so a long first scan does not look stuck to iOS.
-    func update(confirmed: Int, total: Int?, activeFractions: [Double], subtitle: String, scan: (done: Int, total: Int)? = nil) {
+    func update(confirmed: Int, total: Int?, activeFractions: [Double], subtitle: String,
+                scope: Set<UUID>, scan: (done: Int, total: Int)? = nil) {
         #if os(iOS) && !targetEnvironment(macCatalyst)
         guard let task, state == .running else { return }
-        let units: Int64 = 1_000_000
-        if let total, total >= 0, total <= Int(Int64.max / units) {
-            let goal = max(1, Int64(total) * units)
-            var done = total == 0 ? goal : Int64(max(0, min(confirmed, total))) * units
-            for fraction in activeFractions.prefix(64) where fraction.isFinite && fraction > 0 {
-                let partial = Int64(min(0.999999, fraction) * Double(units))
-                let sum = done.addingReportingOverflow(partial)
-                done = sum.overflow ? goal : min(goal, sum.partialValue)
-            }
-            if confirmed < total { done = min(done, goal - 1) }
-            if task.progress.totalUnitCount != goal { task.progress.totalUnitCount = goal }
-            if task.progress.completedUnitCount != done { task.progress.completedUnitCount = done }
+        if progressDestinations != scope {
+            progressDestinations = scope; runProgress.reset()
+        }
+        if let total, let sample = runProgress.sample(confirmed: confirmed, total: total, fractions: activeFractions) {
+            if task.progress.totalUnitCount != sample.total { task.progress.totalUnitCount = sample.total }
+            if task.progress.completedUnitCount != sample.done { task.progress.completedUnitCount = sample.done }
         } else if let scan, scan.total > 0 {
             let goal = Int64(scan.total), done = Int64(max(0, min(scan.done, scan.total)))
             if task.progress.totalUnitCount != goal { task.progress.totalUnitCount = goal }
@@ -206,7 +228,7 @@ final class BackupContinuation {
     /// Normal completion joins workers first. Expiration completes the OS task
     /// promptly while durable input holds protect any still-joining readers.
     func finish(success: Bool) {
-        endGrace(); lastSubtitle = nil
+        endGrace(); lastSubtitle = nil; runProgress.reset(); progressDestinations = nil
         #if os(iOS) && !targetEnvironment(macCatalyst)
         guard state != .idle && state != .unavailable else { return }
         if let task {

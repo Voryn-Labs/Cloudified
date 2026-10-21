@@ -5,7 +5,9 @@ import CloudifiedCore
 /// adds verified account scope and durable evidence; it never retries an asset.
 actor GooglePhotosProviderAdapter: ProviderAdapter {
     nonisolated let provider = Provider.google
-    nonisolated var prefetchesNextOriginal: Bool { true }
+    nonisolated var prefetchesNextOriginal: Bool { false }
+    private static let queueLimit = 4
+    private static let queueBytes: Int64 = 64 * 1024 * 1024
     private struct Scope: Codable, Equatable { let version: Int; let subject: String }
     private struct State: Codable {
         var prepared: [PreparedUpload?]
@@ -27,8 +29,41 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
     var canAcceptWork: Bool {
         get async {
             guard let destination = try? await ledger.selectedDestination(.google) else { return false }
-            return (try? await ledger.retainedTransfers(destinationID: destination.id, limit: 8).count) == 0
+            return (try? await queuedBytes(destination)) != nil
         }
+    }
+    /// Only inventoried single-original OS tasks may share capacity. Ambiguous
+    /// results, restored readers and oversized/paired work require settlement.
+    private func queuedBytes(_ requested: Destination) async throws -> Int64? {
+        let retained = try await ledger.retainedTransfers(destinationID: requested.id, limit: 8)
+        guard retained.count < Self.queueLimit else { return nil }
+        if let background {
+            let readers = try await background.activeTransferIDs()
+            guard readers.isSubset(of: Set(retained.map(\.id))) else { return nil }
+        }
+        guard !retained.isEmpty else { return 0 }
+        guard let background, background.continuesAfterProcessExit else { return nil }
+        let inventory = try await background.inventories(Set(retained.map(\.id)))
+        var bytes: Int64 = 0
+        for transfer in retained {
+            guard transfer.resource.originals.count == 1,
+                  let checkpoint = try await ledger.providerCheckpoint(destinationID: requested.id, tag: transfer.resource.tag),
+                  checkpoint.transferID == transfer.id, checkpoint.jobID == transfer.job.id,
+                  checkpoint.phase == .transferring, !checkpoint.inputsTerminal,
+                  case .active? = inventory[transfer.id] else { return nil }
+            let size = transfer.resource.originals[0].byteCount
+            guard size >= 0, size <= Self.queueBytes - bytes else { return nil }
+            bytes += size
+        }
+        return bytes
+    }
+    func canAdmit(_ job: JobRecord) async throws -> Bool {
+        guard !busy, let bytes = try await queuedBytes(job.destination) else { return false }
+        if bytes == 0, try await ledger.retainedTransfers(destinationID: job.destination.id, limit: 1).isEmpty { return true }
+        guard job.plan.resources.count == 1, let resource = job.plan.resources.first,
+              resource.originals.count == 1 else { return false }
+        let size = resource.originals[0].byteCount
+        return size >= 0 && size <= Self.queueBytes - bytes
     }
     func cancelOwnedTransfers() async throws {
         guard let background else { return }
@@ -47,8 +82,10 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
     func backgroundTransferSnapshot() async throws -> [(JobRecord, ResourceRequirement, Int64, Int64)] {
         guard let background, let selected = try await ledger.selectedDestination(.google) else { return [] }
         var result: [(JobRecord, ResourceRequirement, Int64, Int64)] = []
-        for transfer in try await ledger.retainedTransfers(destinationID: selected.id, limit: 8) {
-            if case .active(let sent, let total) = try await background.inventory(transfer.id) {
+        let transfers = try await ledger.retainedTransfers(destinationID: selected.id, limit: 8)
+        let inventory = try await background.inventories(Set(transfers.map(\.id)))
+        for transfer in transfers {
+            if case .active(let sent, let total)? = inventory[transfer.id] {
                 result.append((transfer.job, transfer.resource, sent, total))
             }
         }
@@ -187,6 +224,19 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                     }
                 }
                 try await save(transfer.job.id, requested, transfer.resource, transfer.id, phase, state)
+                if let receipt = try acceptedReceipt(requested, transfer.resource, state) {
+                    try await save(transfer.job.id, requested, transfer.resource, transfer.id, .confirmed, state)
+                    try await ledger.confirm(receipt, jobID: transfer.job.id, resourceID: transfer.resource.id)
+                } else if try await ledger.job(transfer.job.id).state == .uploading {
+                    // Reclaim a submitted job after a crash between checkpoint
+                    // writes. Only committing/uncertain phases fence acceptance.
+                    let uncertain = phase == .committing || phase == .uncertain
+                    try await ledger.failAttempt(jobID: transfer.job.id,
+                        failure: UploadFailure(SafeFailure(uncertain ? .reconciliation : .connectivity,
+                            domain: .google, cause: uncertain ? .outcomeUnknown : .interrupted),
+                            disposition: .waiting, acceptance: uncertain ? .unknown : .definitelyNotAccepted, didStartTransfer: false),
+                        resourceID: transfer.resource.id, transferID: transfer.id)
+                }
                 try await files.transportFinished(transfer.id)
                 await background?.forget(transferID: transfer.id)
                 try await ledger.wakeWaiting(destinationID: requested.id)
@@ -331,6 +381,12 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                     try await save(job.id, job.destination, resource, transferID, .transferring, state)
                     try Task.checkCancellation()
                     didStartTransfer = true
+                    if inputs.count == 1, job.plan.resources.count == 1, input.byteCount <= Self.queueBytes,
+                       background?.continuesAfterProcessExit == true {
+                        try await session.submit(prepared: prepared, file: input.url, transferID: transferID)
+                        await pump.stop()
+                        return .submitted
+                    }
                     let received = try await session.transfer(prepared: prepared, file: input.url, transferID: transferID, phase: phase)
                     state.prepared[index] = received
                     state.commitIndex = index

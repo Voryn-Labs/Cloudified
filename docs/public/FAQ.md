@@ -61,6 +61,18 @@ protected transfers are admitted; this is not a cap on photos or library size.
 Use recovery with the same account/channel. Do not manually delete protected files
 or reset the database to free slots. Export diagnostics if recovery cannot settle.
 
+## How do I request a background backup with progress?
+
+Tap Start/Resume, or choose **Backup → ⋯ → Continue in background** while an
+automatic backup is running. iOS may grant continued processing and show its
+system progress activity. The display reports work in the current run. Automatic
+backup on opening Cloudified continues to work without this action.
+
+Small Google originals can queue for system transfer before the app is suspended.
+A queued file is not marked Saved until Google confirms it in your library.
+A failed connection may require sending a file again; byte-offset resume after
+terminal failure is not guaranteed. LiveContainer uses foreground fallback.
+
 ## Why does background backup stop?
 
 iOS decides whether and when to grant execution time. A queued request is not a

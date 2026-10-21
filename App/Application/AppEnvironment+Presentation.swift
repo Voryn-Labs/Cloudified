@@ -74,8 +74,9 @@ extension AppEnvironment {
                     bytesSent: activity.bytes ?? 0, totalBytes: activity.expectedBytes,
                     componentOrPart: resource.map(componentLabel), attemptNumber: activity.attempt > 0 ? activity.attempt : nil))
             }
-            if snapshot.active[.google] == nil, let googleAdapter {
+            if let googleAdapter {
                 for (job, resource, bytes, total) in try await googleAdapter.backgroundTransferSnapshot() {
+                    guard snapshot.active[.google]?.jobID != job.id else { continue }
                     let source = try await recipe(job.asset)
                     let expected = total > 0 ? total : resource.originals.reduce(Int64(0)) { $0 + $1.byteCount }
                     if continuedDestinations.contains(job.destination.id) {
@@ -112,7 +113,7 @@ extension AppEnvironment {
             next.canPause = backupRequested && !pausedByUser && (backupExecutionTask != nil || !nativeWork.isEmpty || outstanding || retryTask != nil)
             next.canResume = !backupRequested && durable.scanned && (pausedByUser || resumeAfterExpiration)
             next.controlActivity = controlTransition ? (pausedByUser ? "Pausing…" : "Resuming…") : nil
-            next.controlsAvailable = bootstrapComplete && backgroundExpirationTask == nil && commandProvider == nil && !controlTransition
+            next.controlsAvailable = bootstrapComplete && backgroundExpirationTask == nil && commandProvider == nil && providerEnableTask == nil && !controlTransition
             next.currentTransfers = transfers
             next.accessibleLibraryTotal = durable.libraryTotal
             next.scanTimestamp = durable.scanStartedAt; next.savedToBothCount = durable.savedToBoth
@@ -184,10 +185,10 @@ extension AppEnvironment {
             }
             let scan = isScanning ? scanProgress : nil
             continuation.update(confirmed: participating.compactMap(\.confirmed).reduce(0, +),
-                total: durable.scanned ? participating.compactMap(\.total).reduce(0, +) : nil,
+                total: durable.scanned && !isScanning ? participating.compactMap(\.total).reduce(0, +) : nil,
                 activeFractions: continuedFractions,
                 subtitle: scan.map { "Scanning library \($0.done.formatted()) of \($0.total.formatted())" } ?? channelCheck ?? next.overallState.title,
-                scan: scan)
+                scope: continuedDestinations, scan: scan)
             guard epoch == planningEpoch else { pendingRefresh = true; return }
             guard !Task.isCancelled, isForeground || continuation.state == .running else { return }
             var settings = settingsState

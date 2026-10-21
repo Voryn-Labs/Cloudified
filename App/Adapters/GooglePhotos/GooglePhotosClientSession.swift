@@ -193,7 +193,7 @@ actor GooglePhotosClientSession {
         }
     }
 
-    /// Transfers file bytes to the resumable upload URL using the configured transport.
+    /// Transfers file bytes using the configured transport.
     func transfer(
         prepared: PreparedUpload,
         file: URL,
@@ -213,6 +213,11 @@ actor GooglePhotosClientSession {
         }
     }
 
+    func submit(prepared: PreparedUpload, file: URL, transferID: UUID) async throws {
+        try await traced(.googleTransferQueued) {
+            try await self.requireClient().submit(prepared, file: file, transferID: transferID)
+        }
+    }
     func recoveredTransfer(_ prepared: PreparedUpload, result: FileUploadResult) async throws -> PreparedUpload {
         do { return try await requireClient().receivedTransfer(prepared, result: result) }
         catch let error as GPMCError { throw SafeProviderFailure(failure: Self.classify(error), retryAfter: error.retryAfter) }

@@ -56,6 +56,8 @@ public struct DashboardView: View {
                 ToolbarItem(placement: .principal) { BrandTitle() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button("Continue in background", systemImage: "arrow.up.forward.app", action: environment.requestBackup)
+                            .disabled(!state.workInProgress || !state.controlsAvailable)
                         Button("Keep awake", systemImage: "moon.stars") { showingKeepAwake = true }.disabled(!state.workInProgress)
                         Button("Backup conditions", systemImage: "antenna.radiowaves.left.and.right") { showingConditions = true }
                     } label: { Label("Backup options", systemImage: "ellipsis.circle") }

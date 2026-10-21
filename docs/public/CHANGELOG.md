@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4 — 2026-10-21
+
+### Background backup reliability
+
+- Queue up to four small Google originals, within a 64 MiB queue budget, for iOS
+  to transfer independently of the app's upload worker. Network concurrency stays
+  bounded; large files and Live Photo pairs retain their serial transfer path.
+- Keep submitted files protected until real system completion and Google library
+  confirmation. Recover completed submissions without sending their bytes again.
+- Show progress for work remaining in the current continued-processing run, rather
+  than crediting the same run with photos saved before it began.
+- Reserve continued processing for explicit Start/Resume. Automatic backup on open
+  and system-scheduled background processing remain available.
+- Serialize destination enable/disable requests and preserve the latest preference
+  during account/recovery actions. Diagnostics retain the exact internal error
+  category without exposing credentials or private paths.
+
+Background time remains controlled by iOS. Ordinary app suspension preserves
+submitted Google transfers; a genuinely failed network transfer may still restart
+from the beginning. Google-specific byte-offset resume is not claimed. Original
+quality, provider independence and the three-attempt automatic limit are retained.
+
 ## 0.3 — 2026-10-20
 
 ### Walkthrough redesign

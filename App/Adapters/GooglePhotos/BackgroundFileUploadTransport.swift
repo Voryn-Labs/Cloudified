@@ -90,23 +90,29 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         }
     }
     func inventory(_ id: UUID) async throws -> Inventory {
+        try await inventories([id])[id]!
+    }
+    func inventories(_ ids: Set<UUID>) async throws -> [UUID: Inventory] {
         let current = await session.allTasks
         return try lock.withLock {
             for task in current {
                 guard let text = task.taskDescription, let key = UUID(uuidString: text), task.state != .completed else { continue }
                 tasks[key] = task
             }
-            if let failure = persistenceFailures[id] { throw failure }
-            let journal = try read(id)
-            if let task = tasks[id], current.contains(where: { $0 === task && $0.state != .completed }) || tasks[id] != nil && journal?.terminal != true {
-                return .active(max(0, task.countOfBytesSent), max(0, task.countOfBytesExpectedToSend))
-            }
-            tasks.removeValue(forKey: id)
-            guard let journal, journal.terminal else { return .absent }
-            if let failure = journal.failure { return .failed(failure) }
-            guard let status = journal.status, let response = HTTPURLResponse(url: URL(string: "https://photos.googleapis.com/")!, statusCode: status, httpVersion: nil, headerFields: nil) else { throw CoreError.invalidContract }
-            return .completed(FileUploadResult(data: journal.body, response: response))
+            return try Dictionary(uniqueKeysWithValues: ids.map { ($0, try inventoryLocked($0, current: current)) })
         }
+    }
+    private func inventoryLocked(_ id: UUID, current: [URLSessionTask]) throws -> Inventory {
+        if let failure = persistenceFailures[id] { throw failure }
+        let journal = try read(id)
+        if let task = tasks[id], current.contains(where: { $0 === task && $0.state != .completed }) || tasks[id] != nil && journal?.terminal != true {
+            return .active(max(0, task.countOfBytesSent), max(0, task.countOfBytesExpectedToSend))
+        }
+        tasks.removeValue(forKey: id)
+        guard let journal, journal.terminal else { return .absent }
+        if let failure = journal.failure { return .failed(failure) }
+        guard let status = journal.status, let response = HTTPURLResponse(url: URL(string: "https://photos.googleapis.com/")!, statusCode: status, httpVersion: nil, headerFields: nil) else { throw CoreError.invalidContract }
+        return .completed(FileUploadResult(data: journal.body, response: response))
     }
     func upload(_ request: URLRequest, fromFile file: URL, transferID: UUID,
                 progress: @escaping @Sendable (Int64, Int64) -> Void) async throws -> FileUploadResult {
@@ -130,6 +136,24 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                 if Task.isCancelled { detach(transferID) }
             }
         } onCancel: { self.detach(transferID) }
+    }
+    /// Caller has already persisted its checkpoint and file hold. No Swift
+    /// waiter is required; delegate journals and events drive finalization.
+    func submit(_ request: URLRequest, fromFile file: URL, transferID: UUID) throws {
+        try Task.checkCancellation()
+        try lock.withLock {
+            guard !closing, continuesAfterProcessExit else { throw CoreError.invalidTransition }
+            guard request.url?.scheme == "https", request.url?.host == "photos.googleapis.com",
+                  request.url?.user == nil, request.url?.password == nil else { throw CoreError.invalidContract }
+            if let failure = persistenceFailures.values.first { throw failure }
+            guard waiters[transferID] == nil, tasks[transferID] == nil, try read(transferID) == nil else { throw CoreError.recoveryRequired }
+            let journal = Journal(id: transferID)
+            try write(journal); journals[transferID] = journal
+            let task = session.uploadTask(with: request, fromFile: file)
+            task.taskDescription = transferID.uuidString
+            tasks[transferID] = task
+            task.resume()
+        }
     }
     private func detach(_ id: UUID) {
         let waiter = lock.withLock { waiters.removeValue(forKey: id) }

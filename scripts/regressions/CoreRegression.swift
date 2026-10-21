@@ -47,6 +47,8 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try await providerEnableChecks(root: root)
+        try await googleSubmissionChecks(root: root)
         let f = try await fixture(root), ledger = f.ledger
         _ = try await ledger.snapshot()
         let baseline = await ledger.snapshotPerformance()

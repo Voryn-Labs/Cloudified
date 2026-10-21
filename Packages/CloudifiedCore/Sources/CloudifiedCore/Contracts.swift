@@ -137,6 +137,8 @@ public struct UploadFailure: Codable, Sendable {
 }
 public enum InputOwnership: Sendable { case terminal, retainedByTransport }
 public enum UploadOutcome: Sendable {
+    /// A durable OS task owns the input. This is neither failure nor acceptance.
+    case submitted
     case confirmed(RemoteReceipt, InputOwnership)
     case failed(UploadFailure, InputOwnership)
 }
@@ -165,6 +167,7 @@ public protocol ProviderAdapter: Sendable {
     /// The OS keeps the transfer going without the app, so the next original
     /// is worth exporting during this upload.
     var prefetchesNextOriginal: Bool { get }
+    func canAdmit(_ job: JobRecord) async throws -> Bool
     func inspect(destination: Destination, resource: ResourceRequirement) async -> RemotePresence
     /// Return terminal only after every file reader/callback is fenced. Background
     /// tasks retain the transferID hold until real OS/TDLib terminal reconciliation.
@@ -183,6 +186,7 @@ public enum CoreError: Error, Sendable {
 }
 
 extension ProviderAdapter {
+    public func canAdmit(_ job: JobRecord) async throws -> Bool { true }
     public var canAcceptWork: Bool { get async { true } }
     public var prefetchesNextOriginal: Bool { false }
 }

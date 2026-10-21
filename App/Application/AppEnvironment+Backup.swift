@@ -48,10 +48,10 @@ extension AppEnvironment {
             self.resumeBackup(intent: .automatic)
         }
     }
-    /// Every foreground run asks for continued processing, automatic or not.
+    /// Continued processing represents a user-started finite job.
     /// BackupContinuation ignores the call while a request is queued or running.
     func requestContinuation() {
-        guard isForeground, backupRequested, !pausedByUser, !shuttingDown, backgroundExpirationTask == nil else { return }
+        guard backupIntent == .explicit, isForeground, backupRequested, !pausedByUser, !shuttingDown, backgroundExpirationTask == nil else { return }
         // Items that used all three attempts stay in remaining; they are not work.
         let actionable = [dashboardState.googleStatus, dashboardState.telegramStatus].contains { status in
             status.isEnabled && status.isConnected && (status.remainingCount.map { $0 - (status.failedCount ?? 0) > 0 } ?? true)
@@ -257,7 +257,13 @@ extension AppEnvironment {
     /// Freeze/join the sole planner BEFORE any identity/coverage mutation.
     /// The healthy lane finishes its current ready work without cancellation.
     func beginProviderChange(_ provider: Provider, token: UUID, requiresReleasedInputs: Bool = true) async throws -> Bool {
-        guard backgroundExpirationTask == nil, commandProvider == nil, !controlTransition, bootstrapComplete, !settingsState.isConnectingTelegram, !settingsState.isConnectingGoogle, recoveryTasks[provider] == nil else { throw CoreError.invalidTransition }
+        guard backgroundExpirationTask == nil, commandProvider == nil, !controlTransition, bootstrapComplete, !settingsState.isConnectingTelegram, !settingsState.isConnectingGoogle, recoveryTasks[provider] == nil else {
+            throw SafeFailure(.connectivity, domain: .core, cause: .operationBusy)
+        }
+        if requiresReleasedInputs {
+            providerMappingRevisions[provider, default: 0] &+= 1
+            mappingCommand = provider
+        }
         commandProvider = provider; commandID = token; planningEpoch += 1
         if provider == .google { settingsState.isSettlingGoogle = true }
         else { settingsState.isSettlingTelegram = true }
@@ -279,6 +285,10 @@ extension AppEnvironment {
     }
     func endProviderChange(_ token: UUID) {
         guard commandID == token else { return }
+        if let provider = mappingCommand {
+            providerMappingRevisions[provider, default: 0] &+= 1
+            mappingCommand = nil
+        }
         commandID = nil
         settingsState.isSettlingGoogle = false; settingsState.isSettlingTelegram = false
         commandProvider = nil; scheduleThrottledRefresh()

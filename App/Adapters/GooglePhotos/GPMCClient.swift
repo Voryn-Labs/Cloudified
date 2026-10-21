@@ -544,6 +544,23 @@ actor GPMCClient {
             try Self.validateReceipt(receipt)
             return prepared
         }
+        let request = try await transferRequest(prepared)
+        let total = prepared.byteCount
+        phase(.sending(sent: 0, total: total))
+        let transport: any FileUploadTransport = foreground ? ForegroundFileUploadTransport() : fileUploadTransport
+        let result = try await transport.upload(request, fromFile: file, transferID: transferID) { sent, expected in
+            phase(.sending(sent: sent, total: expected > 0 ? expected : total))
+        }
+        return try receivedTransfer(prepared, result: result)
+    }
+    func submit(_ prepared: PreparedUpload, file: URL, transferID: UUID) async throws {
+        guard let transport = fileUploadTransport as? BackgroundFileUploadTransport,
+              transport.continuesAfterProcessExit, prepared.receipt == nil else { throw CoreError.invalidTransition }
+        let request = try await transferRequest(prepared)
+        try Task.checkCancellation()
+        try transport.submit(request, fromFile: file, transferID: transferID)
+    }
+    private func transferRequest(_ prepared: PreparedUpload) async throws -> URLRequest {
         if expiry <= Date().addingTimeInterval(30) { try await authenticate() }
         _ = try await verifiedSubject()
         var request = URLRequest(url: prepared.uploadURL)
@@ -554,13 +571,7 @@ actor GPMCClient {
         request.setValue("en_US", forHTTPHeaderField: "Accept-Language")
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         networkPolicy.apply(to: &request)
-        let total = prepared.byteCount
-        phase(.sending(sent: 0, total: total))
-        let transport: any FileUploadTransport = foreground ? ForegroundFileUploadTransport() : fileUploadTransport
-        let result = try await transport.upload(request, fromFile: file, transferID: transferID) { sent, expected in
-            phase(.sending(sent: sent, total: expected > 0 ? expected : total))
-        }
-        return try receivedTransfer(prepared, result: result)
+        return request
     }
     func receivedTransfer(_ prepared: PreparedUpload, result: FileUploadResult) throws -> PreparedUpload {
         let (receipt, _) = try checked(result.data, result.response, operation: "file transfer")

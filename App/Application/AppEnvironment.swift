@@ -101,6 +101,10 @@ public final class AppEnvironment: ObservableObject {
     var pausedByUser = UserDefaults.standard.bool(forKey: "CloudifiedUserPaused")
     var commandProvider: Provider?
     var commandID: UUID?
+    var providerEnableTask: Task<Void, Never>?
+    var pendingProviderEnables: [Provider: (value: Bool, revision: UInt64)] = [:]
+    var providerMappingRevisions: [Provider: UInt64] = [:]
+    var mappingCommand: Provider?
     var controlTransition = false
     var startupInventoryRunning = false
     var startupInventoryWake = false
@@ -204,7 +208,7 @@ public final class AppEnvironment: ObservableObject {
     deinit {
         for task in observers + telegramObservers { task.cancel() }
         automaticStartTask?.cancel(); bootstrapTask?.cancel(); backupExecutionTask?.cancel(); libraryAccessTask?.cancel(); refreshTask?.cancel()
-        backgroundExpirationTask?.cancel()
+        backgroundExpirationTask?.cancel(); providerEnableTask?.cancel()
         policyTask?.cancel(); retryTask?.cancel(); cleanupTask?.cancel(); sourceStatusTask?.cancel()
         for task in recoveryTasks.values { task.cancel() }
         failurePageTask?.cancel(); logPageTask?.cancel(); runPageTask?.cancel()
@@ -237,7 +241,8 @@ public final class AppEnvironment: ObservableObject {
             observers.append(Task { [weak self] in
                 for await _ in googleBackground.events {
                     self?.scheduleThrottledRefresh()
-                    self?.requestRecovery(.google, force: true)
+                    if self?.isForeground == true { self?.requestRecovery(.google, force: true) }
+                    else { self?.backgroundTransferWake() }
                 }
             })
             observers.append(Task { [weak self] in
@@ -291,6 +296,7 @@ public final class AppEnvironment: ObservableObject {
         })
     }
     public func scheduleThrottledRefresh() {
+        scheduleProviderEnableChanges()
         guard isForeground || continuation.state == .running else { return }
         pendingRefresh = true
         guard refreshTask == nil, !shuttingDown else { return }
@@ -311,7 +317,10 @@ public final class AppEnvironment: ObservableObject {
             else { settingsState.telegramAuthErrorMessage = explain(safe) }
         } else { systemError = safe; dashboardState.waitingOrErrorReason = explain(safe) }
         do {
-            try await ledger?.appendEvent(.failure, context: EventContext(origin: provider?.origin ?? .system),
+            let detail = ProviderSupport.coreCase(error).map {
+                DiagnosticDetail(stage: .applicationOperation, status: .failed, correlationID: UUID(), coreError: $0)
+            }
+            try await ledger?.appendEvent(.failure, context: EventContext(origin: provider?.origin ?? .system, diagnostic: detail),
                                          decision: .wait, severity: .error, failure: safe)
         } catch { fallback.record(ProviderSupport.safe(error, domain: .sqlite)) }
         if ledger == nil { fallback.record(safe) }

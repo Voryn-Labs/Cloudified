@@ -190,6 +190,10 @@ public actor BackupEngine {
                 if recoveryPending.contains(provider) { break }
                 guard await adapter.canAcceptWork else { break }
                 if let job = try await ledger.claimNext(destinationID: destination.id, runID: runID) {
+                    guard try await adapter.canAdmit(job) else {
+                        try await ledger.releaseClaim(jobID: job.id)
+                        break
+                    }
                     try await process(job, adapter: adapter, preparer: preparer, source: source, runID: runID)
                 } else if let source, try await source.produceNext(for: destination) {
                     // Producer admission is finite and cursor-backed. A failed
@@ -309,9 +313,10 @@ public actor BackupEngine {
             }
             let ownership: InputOwnership
             switch outcome {
+            case .submitted: ownership = .retainedByTransport
             case .confirmed(_, let value), .failed(_, let value): ownership = value
             }
-            if case .retainedByTransport = ownership { transportRecovery.insert(provider) }
+            if case .failed = outcome, case .retainedByTransport = ownership { transportRecovery.insert(provider) }
             if let bytes = active[provider]?.bytes,
                let failure = await ledger.appendProgress(context: EventContext(runID: runID, origin: provider.origin,
                     destinationID: job.destination.id, jobID: job.id, resourceID: resource.id,
@@ -321,6 +326,8 @@ public actor BackupEngine {
             // If any persistence step fails, holds survive rather than risk cleanup.
             do {
                 switch outcome {
+                case .submitted:
+                    try await ledger.recordSubmission(jobID: job.id, resourceID: resource.id, transferID: transferID, runID: runID)
                 case .confirmed(let receipt, _):
                     update(job, resource: resource.id, phase: .finalizing)
                     try await ledger.appendEvent(.finalization, context: EventContext(runID: runID, origin: provider.origin, destinationID: job.destination.id, jobID: job.id, resourceID: resource.id, cycleID: job.cycleID, attempt: job.attempts), decision: .proceed)
@@ -343,6 +350,7 @@ public actor BackupEngine {
             // Returning cancels and joins the structured child immediately on
             // failure; recovery must not wait for an unrelated original export.
             if case .failed = outcome { return }
+            if case .submitted = outcome { return }
             _ = await prefetched
         }
     }
