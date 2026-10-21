@@ -10,6 +10,23 @@ and motion component; Telegram archives both. Google pairing depends on acceptan
 by the service; Settings offers explicit fallback choices. An uncertain accepted
 component is checked before another send.
 
+## Why does Google Photos on iPhone say “Storage saver”?
+
+The unofficial non-quota Pixel profile can produce a misleading item-quality label
+in Google's iPhone app. PhotosBackup's maintainer documents cases where the same
+item shows **Storage saver on iPhone** and **Original quality on photos.google.com**.
+See the [upstream explanation](https://github.com/g8row/PhotosBackup/issues/11#issuecomment-5620654067).
+
+Cloudified sends original files without local recompression and requests the
+original-quality profile. That request is not a guarantee of Google's retained
+bytes or quota treatment. Check the same item's web Info panel; for exact assurance,
+download it using the website's Download command and compare its SHA-256 with an
+unmodified original. Matching file size or resolution alone does not prove identity.
+
+An item already stored in Storage saver may be recognized by duplicate checks;
+Cloudified does not automatically upgrade or replace that existing copy. A mobile
+label alone is not a reason to delete files or force reuploads.
+
 ## What happens above Telegram's file limit?
 
 Cloudified splits oversized originals into parts of at most **1,900,000,000 bytes**.
