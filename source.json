@@ -18,6 +18,17 @@
       "category": "photo-video",
       "versions": [
         {
+          "version": "0.4",
+          "buildVersion": "30",
+          "marketingVersion": "0.4 (30)",
+          "date": "2026-10-21T15:42:47Z",
+          "localizedDescription": "Background backup reliability\n\n- Queue up to four small Google originals, within a 64 MiB queue budget, for iOS\n  to transfer independently of the app's upload worker. Network concurrency stays\n  bounded; large files and Live Photo pairs retain their serial transfer path.\n- Keep submitted files protected until real system completion and Google library\n  confirmation. Recover completed submissions without sending their bytes again.\n- Show progress for work remaining in the current continued-processing run, rather\n  than crediting the same run with photos saved before it began.\n- Reserve continued processing for explicit Start/Resume. Automatic backup on open\n  and system-scheduled background processing remain available.\n- Serialize destination enable/disable requests and preserve the latest preference\n  during account/recovery actions. Diagnostics retain the exact internal error\n  category without exposing credentials or private paths.\n\nBackground time remains controlled by iOS. Ordinary app suspension preserves\nsubmitted Google transfers; a genuinely failed network transfer may still restart\nfrom the beginning. Google-specific byte-offset resume is not claimed. Original\nquality, provider independence and the three-attempt automatic limit are retained.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/build-39627332114/Cloudified-unsigned.ipa",
+          "size": 17901806,
+          "sha256": "8b37d8d56b2abca5e8ef556405d3476255ec5a2583dce760016d8fb85a869705",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.3",
           "buildVersion": "29",
           "marketingVersion": "0.3 (29)",
