@@ -327,11 +327,12 @@ public actor TDLibClient {
     public func getMe() async throws -> TDLibResponse {
         let req: [String: Any] = ["@type": "getMe"]
         do {
-            return try await session.sendRequest(req)
+            return try await request(req)
         } catch {
             if error is CoreError || error is CredentialError || error is CancellationError { throw error }
-            let classified = Self.classify(error)
+            let classified = (error as? TDLibRequestRejection)?.failure ?? Self.classify(error)
             try await emitDiagnostic(.failure, decision: .wait, severity: .error, failure: classified)
+            if let rejected = error as? TDLibRequestRejection { throw rejected }
             throw classified
         }
     }
@@ -510,6 +511,9 @@ public actor TDLibClient {
                 }
                 if code == 400, let method, [.setAuthenticationPhoneNumber, .checkAuthenticationCode, .checkAuthenticationPassword, .setAuthenticationEmailAddress, .checkAuthenticationEmailCode, .setTdlibParameters].contains(method) {
                     return SafeFailure(.authentication, domain: .tdlib, code: Int(code), cause: .authenticationRejected)
+                }
+                if code == 403 {
+                    return SafeFailure(.accessDenied, domain: .tdlib, code: Int(code), cause: .permissionDenied)
                 }
                 if code == 400 {
                     return SafeFailure(.transfer, domain: .tdlib, code: Int(code), cause: .formatRejected)

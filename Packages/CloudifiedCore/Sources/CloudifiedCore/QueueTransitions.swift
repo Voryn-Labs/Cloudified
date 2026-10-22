@@ -9,6 +9,11 @@ extension Ledger {
             try db.execute("UPDATE jobs SET state='reconciling' WHERE id=?", [jobID.sql])
         }
     }
+    private func moveToQueueEnd(_ jobID: UUID) throws {
+        let last = try db.rows("SELECT COALESCE(MAX(seq),0) AS n FROM jobs").first!.int("n")
+        guard last < Int64.max else { throw CoreError.invalidContract }
+        try db.execute("UPDATE jobs SET seq=? WHERE id=?", [.integer(last + 1), jobID.sql])
+    }
     public func recordSubmission(jobID: UUID, resourceID: UUID, transferID: UUID, runID: UUID) throws {
         try transaction {
             let job = try loadJob(jobID)
@@ -72,6 +77,7 @@ extension Ledger {
                 try db.execute("UPDATE obligations SET status='absent' WHERE job_id=? AND resource_id=? AND status!='confirmed'", [jobID.sql, resourceID.sql])
                 try record(.remoteCheck, context: context(job, runID: runID, resource: resourceID), decision: .proceed)
             case .unknown(let error):
+                try moveToQueueEnd(jobID)
                 try storeFailure(error, job: job)
                 let retry = try inspectionDeadline(error, job: job)
                 try db.execute("UPDATE jobs SET state='waiting',failure=?,retry_at=? WHERE id=?", [try db.encode(error), retry?.sql ?? .null, jobID.sql])
@@ -190,6 +196,7 @@ extension Ledger {
                 if let deadline = failure.retryAfter { retry = max(retry ?? deadline, deadline) }
             }
             try db.execute("UPDATE jobs SET state=?,failure=?,retry_at=? WHERE id=?", [.text(state.rawValue), try db.encode(failure.error), retry?.sql ?? .null, jobID.sql])
+            if state != .failed && failure.disposition != .providerWait { try moveToQueueEnd(jobID) }
             try db.execute("UPDATE attempts SET ended=?,suspended=?,failure=? WHERE job_id=? AND cycle=? AND number=? AND ended IS NULL", [suspended ? .null : now.sql, .integer(suspended ? 1 : 0), try db.encode(failure.error), jobID.sql, job.cycleID.sql, .integer(Int64(job.attempts))])
             if failure.disposition == .providerWait {
                 try db.execute("UPDATE destinations SET blocked=?,resume_at=? WHERE id=?", [try db.encode(failure.error), failure.retryAfter?.sql ?? .null, job.destination.id.sql])
@@ -204,6 +211,7 @@ extension Ledger {
         guard job.state != .confirmed else { return }
         try transaction {
             try storeFailure(failure, job: job)
+            if !permanent { try moveToQueueEnd(jobID) }
             let retry = permanent ? nil : waitingDeadline(failure)
             try db.execute("UPDATE jobs SET state=?,failure=?,retry_at=? WHERE id=?", [.text(permanent ? "failed" : "waiting"), try db.encode(failure), retry?.sql ?? .null, jobID.sql])
             try record(.preparation, context: context(job, runID: runID), severity: .warning, decision: permanent ? .skip : .wait, from: job.state, to: permanent ? .failed : .waiting, failure: failure)
@@ -228,10 +236,11 @@ extension Ledger {
     }
     public func nextWake(destinationID: UUID) throws -> Date? {
         let now = Date()
-        guard let destination = try db.rows("SELECT * FROM destinations WHERE id=? AND selected=1 AND enabled=1 AND recovered=1", [destinationID.sql]).first else { return nil }
+        guard let destination = try db.rows("SELECT * FROM destinations WHERE id=? AND selected=1 AND enabled=1", [destinationID.sql]).first else { return nil }
         if case .blob = destination.values["blocked"] {
             return destination.double("resume_at").map(Date.init(timeIntervalSince1970:)).flatMap { $0 > now ? $0 : nil }
         }
+        guard destination.int("recovered") == 1 else { return nil }
         let row = try db.rows("""
             SELECT MIN(j.retry_at) AS wake FROM jobs j WHERE j.destination_id=?
             AND j.state IN ('delayed','reconciling','waiting') AND j.retry_at>?

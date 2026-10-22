@@ -161,8 +161,9 @@ public struct LogsView: View {
                             }
                         }
                         if environment.logsState.hasOlderRuns {
-                            Button("Load older runs") { environment.loadRuns(older: true) }
+                            Button("Older runs") { environment.loadRuns(older: true) }
                         }
+                        Button("Newest runs") { environment.loadRuns() }
                         Divider()
                         Picker("Source", selection: $environment.logsState.originFilter) {
                             ForEach(LogOriginFilter.allCases) { f in

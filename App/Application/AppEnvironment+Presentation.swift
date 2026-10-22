@@ -147,10 +147,9 @@ extension AppEnvironment {
                 card.retainedTransferCount = value.retainedTransfers
                 card.protectedUnresolvedCount = value.protectedUnresolvedTransfers
                 if value.destinationID != nil && value.enabled, let error {
-                    if error.category == .authentication || [.loginRequired, .identityUnverified, .accountChanged].contains(error.cause) {
-                        card.attention = .signIn
-                    } else if provider == .google && error.category == .quota {
-                        card.attention = .storage
+                    card.attention = FailureExplanation.destinationAttention(error)
+                    if card.attention != nil {
+                        card.attentionMessage = FailureExplanation.destinationMessage(error, provider: provider, resumeAt: value.resumeAt)
                     }
                 }
                 if provider == .google { next.googleStatus = card } else { next.telegramStatus = card }

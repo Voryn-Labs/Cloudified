@@ -329,6 +329,10 @@ public final class PhotoLibraryPipeline: PhotoLibraryAdapterProtocol, Sendable {
                 originalFilename: candidate.resource.originalFilename, sha256: hashes.sha256, sha1: hashes.sha1,
                 byteCount: hashes.byteCount, resourceType: candidate.resource.type.rawValue, selectorIndex: candidate.selectorIndex), published)
         } catch {
+            do {
+                try await ledger.appendEvent(.failure, context: context, decision: .wait, severity: .error,
+                    failure: SourceFailurePolicy.safe(error, domain: .photos))
+            } catch { onDiagnosticFailure(SourceFailurePolicy.safe(error, domain: .sqlite)) }
             var cleanupError: (any Error)?
             do { try await coalescer.finish() } catch { cleanupError = error }
             if let leased { do { try await fileStore.release(leased) } catch { cleanupError = error } }

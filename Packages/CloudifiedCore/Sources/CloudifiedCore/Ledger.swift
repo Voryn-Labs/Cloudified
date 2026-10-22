@@ -121,6 +121,15 @@ public actor Ledger {
             if db.changes > 0 { try record(.recovery, context: EventContext(destinationID: id), decision: .proceed) }
         }
     }
+    /// A provider-wide recovery rejection fences this selected mapping, not its files.
+    public func blockDestination(_ id: UUID, failure: SafeFailure, resumeAt: Date?) throws {
+        guard [.authentication, .accessDenied, .quota, .rateLimit].contains(failure.category) else { throw CoreError.invalidContract }
+        try transaction {
+            guard try db.rows("SELECT id FROM destinations WHERE id=? AND selected=1", [id.sql]).count == 1 else { throw CoreError.staleMapping }
+            try db.execute("UPDATE destinations SET blocked=?,resume_at=?,recovered=0 WHERE id=?", [try db.encode(failure), resumeAt?.sql ?? .null, id.sql])
+            try record(.recovery, context: EventContext(destinationID: id), severity: .error, decision: .wait, failure: failure)
+        }
+    }
     public func unblockDestination(_ id: UUID) throws {
         try transaction {
             try db.execute("UPDATE destinations SET blocked=NULL,resume_at=NULL WHERE id=? AND (blocked IS NOT NULL OR resume_at IS NOT NULL)", [id.sql])

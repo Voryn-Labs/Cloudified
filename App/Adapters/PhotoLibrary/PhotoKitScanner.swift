@@ -125,12 +125,17 @@ public enum PhotoKitScanner {
         else { return nil }
         var changed = Set<String>()
         do {
-            for change in try PHPhotoLibrary.shared().fetchPersistentChanges(since: token) {
-                try Task.checkCancellation()
-                let details = try change.changeDetails(for: .asset)
-                changed.formUnion(details.insertedLocalIdentifiers)
-                changed.formUnion(details.updatedLocalIdentifiers)
-                changed.formUnion(details.deletedLocalIdentifiers)
+            let changes = try PHPhotoLibrary.shared().fetchPersistentChanges(since: token).makeIterator()
+            var ended = false
+            while !ended {
+                try autoreleasepool {
+                    try Task.checkCancellation()
+                    guard let change = changes.next() else { ended = true; return }
+                    let details = try change.changeDetails(for: .asset)
+                    changed.formUnion(details.insertedLocalIdentifiers)
+                    changed.formUnion(details.updatedLocalIdentifiers)
+                    changed.formUnion(details.deletedLocalIdentifiers)
+                }
                 if changed.count > maxIncrementalChanges { return nil }
             }
         } catch is CancellationError {
@@ -148,10 +153,10 @@ public enum PhotoKitScanner {
         while start < ids.count {
             try Task.checkCancellation()
             let slice = Array(ids[start..<min(start + maxPageSize, ids.count)])
-            let fetched = PHAsset.fetchAssets(withLocalIdentifiers: slice, options: options)
-            var page: [AssetIdentity] = []
-            page.reserveCapacity(fetched.count)
-            for i in 0..<fetched.count { page.append(identity(for: fetched.object(at: i))) }
+            let page: [AssetIdentity] = autoreleasepool {
+                let fetched = PHAsset.fetchAssets(withLocalIdentifiers: slice, options: options)
+                return (0..<fetched.count).map { identity(for: fetched.object(at: $0)) }
+            }
             if !page.isEmpty { _ = try await ledger.registerAssets(page, scanID: begun.id) }
             registered += page.count; start += slice.count
             progress?(start, ids.count)
@@ -213,7 +218,7 @@ public enum PhotoKitScanner {
 
         for i in 0..<totalCount {
             try Task.checkCancellation()
-            page.append(identity(for: fetchResult.object(at: i)))
+            page.append(autoreleasepool { identity(for: fetchResult.object(at: i)) })
 
             if page.count == maxPageSize {
                 _ = try await ledger.registerAssets(page, scanID: scanID)

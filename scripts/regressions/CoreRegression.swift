@@ -47,6 +47,52 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try await secondPassChecks(root: root)
+        let limited = try await fixture(root, provider: .telegram)
+        let delay = Date().addingTimeInterval(120)
+        let limit = SafeFailure(.rateLimit, domain: .tdlib, code: 429, cause: .serverRateLimit)
+        try await limited.ledger.blockDestination(limited.destination.id, failure: limit, resumeAt: delay)
+        let healthy = try await limited.ledger.selectDestination(Destination(provider: .google, verifiedFingerprint: String(repeating: "2", count: 64)))
+        try await limited.ledger.completeDestinationRecovery(healthy.id)
+        check(try await limited.ledger.canRun(healthy.id), "Telegram account gate blocked Google")
+        let limitedState = try await limited.ledger.snapshot().providers[1]
+        check(limitedState.blockedReason == limit && abs((limitedState.resumeAt ?? .distantPast).timeIntervalSince(delay)) < 0.001 && !limitedState.recoveryComplete,
+            "recovery-time rate limit lost its durable account gate")
+        check(try await limited.ledger.nextWake(destinationID: limited.destination.id).map { abs($0.timeIntervalSince(delay)) < 0.001 } == true,
+            "incomplete recovery hid account retry deadline")
+        check(try await limited.ledger.claimNext(destinationID: limited.destination.id, runID: UUID(), now: delay.addingTimeInterval(1)) == nil,
+            "time alone admitted work before native recovery")
+        try await limited.ledger.completeDestinationRecovery(limited.destination.id)
+        check(try await limited.ledger.claimNext(destinationID: limited.destination.id, runID: UUID(), now: delay.addingTimeInterval(1)) != nil,
+            "verified recovery never released expired account wait")
+        let beforeFlood = Date()
+        do {
+            _ = try await NativeRequestHarness(.tdlibError(code: 420, message: "FLOOD_WAIT_120")).getMe()
+            preconditionFailure("getMe swallowed native flood wait")
+        } catch let rejection as TDLibRequestRejection {
+            check(rejection.failure.category == .rateLimit && (rejection.retryAfter?.timeIntervalSince(beforeFlood) ?? 0) >= 120,
+                "getMe dropped the original account retry deadline")
+        }
+        let forbidden = TDLibClient.classify(TDLibError.tdlibError(code: 403, message: "forbidden fixture"))
+        check(forbidden.category == .accessDenied && FailureExplanation.destinationAttention(forbidden) == .account,
+            "forbidden Telegram request became a per-file format failure")
+        let expired = SafeFailure(.authentication, domain: .google, code: 401, cause: .loginRequired)
+        check(FailureExplanation.destinationAttention(expired) == .signIn && ProviderCardState.Attention.signIn.actionTitle == "Sign in again",
+            "expired session lacks direct sign-in action")
+        check(FailureExplanation.destinationAttention(limit) == .rateLimit && ProviderCardState.Attention.rateLimit.actionTitle == nil,
+            "Telegram limit incorrectly offers login as cure")
+        check(FailureExplanation.destinationMessage(limit, provider: .telegram, resumeAt: delay).contains("retry no earlier than"),
+            "known server delay not explained")
+        check(FailureExplanation.destinationMessage(limit, provider: .telegram, resumeAt: nil).contains("without giving a retry time"),
+            "unknown delay fabricated retry date")
+        check(FailureExplanation.destinationAttention(SafeFailure(.connectivity, domain: .tdlib, cause: .offline)) == nil &&
+              FailureExplanation.destinationAttention(SafeFailure(.reconciliation, domain: .tdlib, cause: .pendingSendUnmatched)) == nil,
+            "file/network failure mislabeled account problem")
+        check(FailureExplanation.destinationAttention(SafeFailure(.authentication, domain: .tdlib, cause: .initializationFailed)) == .connection,
+            "local connection failure mislabeled account problem")
+        check(FailureExplanation.destinationAttention(SafeFailure(.accessDenied, domain: .photos, cause: .permissionDenied)) == nil,
+            "Photos permission mislabeled account problem")
+        print("PASS actual account waits: durable deadline survives incomplete recovery; native recovery still required; sign-in/rate/network remedies distinguished")
         try await providerEnableChecks(root: root)
         try await googleSubmissionChecks(root: root)
         let f = try await fixture(root), ledger = f.ledger

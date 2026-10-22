@@ -83,7 +83,11 @@ public final class PhotoLibraryOriginalPreparer: OriginalPreparer, Sendable {
                     }
                     return leasedFiles
                 } catch {
-                    // Multi-input prepare failed: release every accumulated lease to prevent leaks
+                    // Retain the preparation cause even if cleanup must take precedence.
+                    do {
+                        try await ledger.appendEvent(.failure, context: context, decision: .wait, severity: .error,
+                            failure: SourceFailurePolicy.safe(error, domain: .photos))
+                    } catch { onDiagnosticFailure(SourceFailurePolicy.safe(error, domain: .sqlite)) }
                     var cleanupError: (any Error)?
                     for leased in leasedFiles {
                         do { try await fileStore.release(leased) } catch { cleanupError = error }

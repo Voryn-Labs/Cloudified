@@ -27,15 +27,17 @@ public final class StreamingFileWriter: @unchecked Sendable {
         guard !isClosed else { throw CoreError.invalidTransition }
         var start = chunk.startIndex
         while start < chunk.endIndex {
-            let end = min(start + 1_048_576, chunk.endIndex)
-            let slice = chunk[start..<end]
-            guard totalBytesWritten <= Int64.max - Int64(slice.count) else { throw CoreError.invalidContract }
-            try beforeWrite?(totalBytesWritten + Int64(slice.count))
-            do { try fileHandle.write(contentsOf: slice) } catch { throw Self.safe(error) }
-            sha256Hasher.update(data: slice); sha1Hasher.update(data: slice)
-            totalBytesWritten += Int64(slice.count); start = end
-            // Progress is measured only after the complete write/hash succeeds.
-            try afterWrite?(totalBytesWritten)
+            try autoreleasepool {
+                let end = min(start + 1_048_576, chunk.endIndex)
+                let slice = chunk[start..<end]
+                guard totalBytesWritten <= Int64.max - Int64(slice.count) else { throw CoreError.invalidContract }
+                try beforeWrite?(totalBytesWritten + Int64(slice.count))
+                do { try fileHandle.write(contentsOf: slice) } catch { throw Self.safe(error) }
+                sha256Hasher.update(data: slice); sha1Hasher.update(data: slice)
+                totalBytesWritten += Int64(slice.count); start = end
+                // Progress is measured only after the complete write/hash succeeds.
+                try afterWrite?(totalBytesWritten)
+            }
         }
     }
     public func finalize() throws -> (sha256: String, sha1: String, byteCount: Int64) {

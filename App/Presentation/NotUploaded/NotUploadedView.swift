@@ -230,7 +230,7 @@ public struct NotUploadedDetailSheet: View {
                 } header: { Text("What happened") } footer: {
                     Text(item.needsRecovery
                         ? "This file is not counted as saved. Verification can remain unresolved; Cloudified will not guess or send another copy. Other eligible files can continue."
-                        : "Retryable errors get up to three automatic attempts. Some errors need action immediately. A manual retry starts a new cycle for this destination.")
+                        : "Other ready files run before automatic retries. Retryable errors get up to three total automatic attempts. Some errors need action immediately. A manual retry starts a new cycle for this destination.")
                 }
 
                 Section {

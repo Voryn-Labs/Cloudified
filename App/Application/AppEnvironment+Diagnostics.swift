@@ -47,6 +47,8 @@ extension AppEnvironment {
             if let value = detail.backupIntent { text += "\nBackup invocation: \(value.rawValue)" }
             if let value = detail.policyCause { text += "\nExecution policy: \(value.rawValue)" }
             if let value = detail.lowPowerMode { text += "\nLow Power Mode: \(value)" }
+            if let value = detail.recoveryLookup { text += "\nRecovery lookup: \(value.rawValue)" }
+            if let value = detail.recoveryIssue { text += "\nLookup deferred: \(value.rawValue)" }
             if let value = detail.items { text += "\nItems: \(value)" }
             if let value = detail.pages { text += "\nPages: \(value)" }
             if let value = detail.reused { text += "\nReused verified scan cursor: \(value)" }

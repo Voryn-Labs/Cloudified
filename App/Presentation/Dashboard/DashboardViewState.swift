@@ -65,9 +65,29 @@ public enum OverallActivityState: Equatable, Sendable {
 }
 
 public struct ProviderCardState: Equatable, Sendable {
-    public enum Attention: Equatable, Sendable { case signIn, storage }
+    public enum Attention: Equatable, Sendable { case signIn, storage, rateLimit, account, connection
+        public var title: String {
+            switch self {
+            case .signIn: return "Sign-in needed"
+            case .storage: return "Storage limit"
+            case .rateLimit: return "Temporary limit"
+            case .account: return "Account needs attention"
+            case .connection: return "Connection needs attention"
+            }
+        }
+        public var actionTitle: String? {
+            switch self {
+            case .signIn: return "Sign in again"
+            case .storage: return "Manage storage"
+            case .account: return "Review account settings"
+            case .connection: return "Open connection settings"
+            case .rateLimit: return nil
+            }
+        }
+    }
     public let name: String
     public var attention: Attention?
+    public var attentionMessage: String?
     public var isEnabled: Bool
     public var isConnected: Bool
     public var accountIdentifier: String?

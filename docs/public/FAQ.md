@@ -45,13 +45,37 @@ unconfirmed; it is not treated as absence. A photo uploaded previously outside
 Cloudified can be recognized only when the provider's checks identify the same
 original content. Visually identical images with different bytes may not match.
 
+## Why does Remaining include photos already in Google Photos?
+
+The total comes from your local Photos library, not Google's library count.
+Initially, remaining includes items Cloudified has not checked yet. Each file is
+hashed and checked against Google before upload; a verified match counts as saved
+without uploading its bytes. A large remaining number is not proof of duplicate
+uploads. Compressed, edited or otherwise different copies may not match; Cloudified
+does not skip an original based only on a similar filename or appearance.
+
 ## Can one failed file stop every upload?
 
 An ordinary item failure is recorded and later eligible files can proceed. A
 provider-wide authentication, permission, rate-limit, protocol or storage fault may
 pause that provider. Google and Telegram are independent. The app allows three
-automatic logical send attempts; an explicit retry starts a new cycle. Network
+automatic logical send attempts in total, with retryable items moved behind other
+ready files. The third failed attempt stays in Activity → Issues; only an explicit
+retry starts a new cycle. Network
 waits before a send do not consume a new send attempt.
+
+## Why is one account paused?
+
+Backup shows an explanation directly on the affected destination card. A missing
+or expired sign-in offers **Sign in again**; permission or channel problems offer
+account settings. A local connection problem is described separately from an
+account problem.
+
+A temporary service limit shows the next retry time when one is available. Keep
+that destination enabled; Cloudified retries when its deadline has passed and iOS
+allows the app to run. If no retry time is available, wait before retrying from
+account settings. Signing in again does not remove Telegram rate limits. The
+other enabled destination can continue independently.
 
 ## What are protected uploads?
 
@@ -167,7 +191,6 @@ import, with iOS 26 as the minimum. LiveContainer runs the app in a host: Cloudi
 uses foreground transfers there and skips guest background-task registration.
 Keep it open, optionally using Keep Awake. A host does not grant independent
 background launch or security isolation. Settings → About shows the runtime.
-Actual device and installer verification is still required.
 
 ## Can I build or copy Cloudified?
 

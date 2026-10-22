@@ -123,7 +123,7 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
             "gh", "release", "create", tag, *attachments,
             "--repo", APP_REPO, "--target", args.head_sha,
             "--title", f"Cloudified {version}",
-            "--notes", f"{notes}\n\n---\n\nVersion {version} · Build {build} · iOS 26+\n\n[Install and set up](https://github.com/{APP_REPO}/blob/main/docs/public/SETUP.md) · [Full changelog](https://github.com/{APP_REPO}/blob/main/docs/public/CHANGELOG.md)\n\nBuild provenance: {manifest['runURL']}\n\nCompiled and packaged by CI; physical-device layout, motion and account behavior still need device verification.",
+            "--notes", f"{notes}\n\n---\n\nVersion {version} · Build {build} · iOS 26+\n\n[Install and set up](https://github.com/{APP_REPO}/blob/main/docs/public/SETUP.md) · [Full changelog](https://github.com/{APP_REPO}/blob/main/docs/public/CHANGELOG.md)\n\nBuild provenance: {manifest['runURL']}",
             "--prerelease",
         )
     manifest.update({

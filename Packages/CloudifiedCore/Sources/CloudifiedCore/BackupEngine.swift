@@ -50,6 +50,7 @@ public actor BackupEngine {
     public let files: FileLeaseStore
     private let preparation = PreparationGate()
     private var workers: [Provider: Task<LaneResult, Never>] = [:]
+    private var finishing: [UUID: (provider: Provider, task: Task<LaneResult, Never>)] = [:]
     private var active: [Provider: LaneActivity] = [:]
     private var progressAt: [Provider: Date] = [:]
     private var failures: [Provider: SafeFailure] = [:]
@@ -110,9 +111,12 @@ public actor BackupEngine {
     /// Durable retained transport IDs additionally require real adapter inventory;
     /// this method does not claim a cancellation request is terminal ownership.
     public func settleProvider(_ provider: Provider) async -> LaneResult? {
-        guard let worker = workers[provider] else { return nil }
-        worker.cancel()
-        return await worker.value
+        let callbacks = finishing.values.filter { $0.provider == provider }.map(\.task)
+        let pending = callbacks + (workers[provider].map { [$0] } ?? [])
+        var result: LaneResult?
+        for worker in pending { worker.cancel() }
+        for worker in pending { result = await worker.value }
+        return result
     }
     /// Finite drain of currently-ready work. Returns retry deadlines to one P6
     /// event-driven wake timer; no polling/sleep loop or provider-drain sequencing.
@@ -166,10 +170,13 @@ public actor BackupEngine {
         }
     }
     private func finishedLane(_ result: LaneResult) async {
-        workers.removeValue(forKey: result.provider); batchResults[result.provider] = result
+        let id = UUID()
+        if let worker = workers.removeValue(forKey: result.provider) { finishing[id] = (result.provider, worker) }
+        batchResults[result.provider] = result
         await laneFinished?(result)
+        finishing.removeValue(forKey: id)
         // Callback may have admitted a genuine wake. Never drop a new reader.
-        if workers.isEmpty, let continuation = batchCompletion {
+        if workers.isEmpty, finishing.isEmpty, let continuation = batchCompletion {
             batchCompletion = nil
             continuation.resume(returning: Provider.allCases.compactMap { batchResults[$0] })
         }

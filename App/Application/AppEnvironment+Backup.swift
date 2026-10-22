@@ -250,8 +250,16 @@ extension AppEnvironment {
         retryTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(max(0, date.timeIntervalSinceNow))) } catch { return }
             self?.retryTask = nil
-            self?.retryDeadlines = self?.retryDeadlines.filter { $0.value > Date() } ?? [:]
-            self?.requestDrain()
+            guard let self else { return }
+            let due = Set(self.retryDeadlines.filter { $0.value <= Date() }.keys)
+            self.retryDeadlines = self.retryDeadlines.filter { $0.value > Date() }
+            if let snapshot = try? await self.ledger?.snapshot() {
+                guard !Task.isCancelled, self.backupRequested, !self.pausedByUser else { return }
+                for value in snapshot.providers where due.contains(value.provider) && !value.recoveryComplete {
+                    self.requestRecovery(value.provider)
+                }
+            }
+            self.requestDrain()
         }
     }
     /// Freeze/join the sole planner BEFORE any identity/coverage mutation.

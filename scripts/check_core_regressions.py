@@ -102,6 +102,13 @@ client = (ROOT / 'App/Adapters/Telegram/TDLibClient.swift').read_text()
 (out / 'ActualLocalReset.swift').write_text('import Foundation\nimport CloudifiedCore\nextension LocalResetHarness {\n'
     + section(client, '    func resetLocalDatabaseAfterKeyLoss()', '    /// Initializes and starts')
         .replace('Self.storageURLs(', 'storageURLsForBoundary(') + '}\n')
+(out / 'ActualTelegramRequest.swift').write_text('import Foundation\nimport CloudifiedCore\n'
+    + section(client, 'struct TDLibRequestRejection:', 'public actor TDLibClient') + """
+actor NativeRequestHarness {
+ let session:NativeRequestBoundary
+ init(_ error:TDLibError){session=NativeRequestBoundary(error)}
+ func emitDiagnostic(_ op:EventOperation,decision:EventDecision,severity:EventSeverity,failure:SafeFailure?) async throws {}
+""" + section(client, '    func request(_ request:', '    /// Streams raw updates').replace('Self.classify(', 'TDLibClient.classify(').replace('Self.retryDelay(', 'TDLibClient.retryDelay(') + '}\n')
 (out / 'ActualNetworkPolicy.swift').write_text('''import Foundation
 actor NetworkPolicyHarness {
  let session:NetworkPolicyBoundary
@@ -122,18 +129,23 @@ actor OwnedRecoveryHarness {
   pending[1]=Pending(checkpoint:checkpoint,state:State(chatID:-100,sendingID:1,byteCount:3,filename:"original.heic",temporaryID:50,fileID:7),inputInventoried:inventoried)
   return try matchingPending(message,oldMessageID:oldMessageID)
  }
+ private var deferrals:[DiagnosticRecoveryLookup]=[]
  func traceOwnedLookup(_ checkpoint:ProviderCheckpoint,pages:Int,candidates:Int,found:Bool,local:Bool) async {}
+ func traceLookupDeferral(_ checkpoint:ProviderCheckpoint,lookup:DiagnosticRecoveryLookup,issue:DiagnosticRecoveryIssue) async {deferrals.append(lookup)}
+ func deferred()->[DiagnosticRecoveryLookup] {deferrals}
  func incompleteHistory()->SafeFailure {SafeFailure(.reconciliation,domain:.tdlib,cause:.incompleteHistory)}
  func lookup(_ checkpoint:ProviderCheckpoint,fileID:Int32?) async throws -> TDLibResponse? {
   try await findOwnedMessage(checkpoint:checkpoint,state:State(chatID:-100,sendingID:1,byteCount:3,filename:"original.heic",fileID:fileID))
  }
 ''' + section(telegram, '    private struct State:', '    private enum Resolution:')
  + section(telegram, '    private func matchingPending(', '    private func indexNew(')
+ + section(telegram, '    private enum OwnedLookupFailure:', '    private func traceLookupDeferral(')
  + section(telegram, '    private func findOwnedMessage(', '    /// Settings/P6') + '}\n')
 (out / 'ActualTelegramSettlement.swift').write_text('''import Foundation
 import CloudifiedCore
 enum TDLibClient {
-''' + section(client, '    static func retryDelay(', '    // MARK: - Error Classification') + '''}
+''' + section(client, '    static func retryDelay(', '    // MARK: - Error Classification')
+ + client[client.index('    static func nativeReason('):] + '''
 actor TelegramSettlementHarness {
  let client:OwnedRecoveryBoundary, ledger:Ledger, files:FileLeaseStore,inputFiles:TelegramInputFiles
  private var scope:Scope?=Scope(version:1,userID:1,chatID:-100)
@@ -203,7 +215,41 @@ actor GoogleSettlementHarness {
 accounts = (ROOT / 'App/Application/AppEnvironment+Accounts.swift').read_text()
 (out / 'ActualProviderEnable.swift').write_text('import Foundation\nimport CloudifiedCore\nextension ProviderEnableHarness {\n'
     + section(accounts, '    func setEnabled(', '    public func setWiFiOnly(') + '}\n')
-files = [ROOT / 'scripts/regressions/ProviderEnableBoundary.swift', out / 'ActualProviderEnable.swift', out / 'ActualGoogleSettlement.swift', ROOT / 'scripts/regressions/GoogleSubmissionBoundary.swift', out / 'ActualGoogleQueue.swift', out / 'ActualContinuedProgress.swift', ROOT / 'scripts/regressions/AuditRequestBoundary.swift', out / 'ActualBackupRequest.swift', out / 'ActualLocalReset.swift', ROOT / 'App/Adapters/System/DiagnosticReportUploader.swift', ROOT / 'App/Adapters/System/AppRuntime.swift', out / 'ActualTelegramSettlement.swift', ROOT / 'scripts/regressions/AuditBoundaries.swift', ROOT / 'App/Adapters/GooglePhotos/ForegroundFileUploadTransport.swift', ROOT / 'App/Adapters/PhotoLibrary/StreamingHasher.swift', ROOT / 'App/Adapters/PhotoLibrary/SourceRecipe.swift', ROOT / 'App/Adapters/PhotoLibrary/LosslessVideoPartSplitter.swift', out / 'ActualProgressCoalescer.swift', out / 'ActualPhotoExport.swift', ROOT / 'scripts/regressions/TelegramRecoveryBoundary.swift', ROOT / 'App/Adapters/Telegram/TelegramInputFiles.swift', ROOT / 'App/Presentation/Dashboard/DashboardViewState.swift', out / 'ActualNetworkPolicy.swift', out / 'ActualOwnedRecovery.swift', ROOT / 'scripts/regressions/CoreRegression.swift', ROOT / 'scripts/regressions/PresentationRecovery.swift', ROOT / 'App/Presentation/ScreenStateStore.swift', ROOT / 'App/Presentation/NotUploaded/NotUploadedViewState.swift', ROOT / 'scripts/regressions/CredentialKeyBoundary.swift', ROOT / 'App/Adapters/Security/KeychainCredentialStore.swift', ROOT / 'scripts/regressions/NativeProtocolBoundary.swift', ROOT / 'scripts/regressions/TelegramCensusBoundary.swift', ROOT / 'scripts/regressions/LaneIsolation.swift',
+background = (ROOT / 'App/Adapters/GooglePhotos/BackgroundFileUploadTransport.swift').read_text()
+body = background[:background.index('final class CloudifiedAppDelegate:')].replace('import UIKit\n', '')
+body = body.replace('config.waitsForConnectivity = true;', 'config.protocolClasses = [OfflineUploadProtocol.self]; config.waitsForConnectivity = true;')
+(out / 'ActualBackgroundTransport.swift').write_text(body + """
+extension BackgroundFileUploadTransport {
+ func forceFailure(_ id:UUID) {lock.withLock {persistenceFailures[id]=SafeFailure(.invariant,domain:.core,cause:.invalidContract)}}
+ func cachedInventory(_ id:UUID,new:Bool) throws -> Inventory {
+  try lock.withLock {
+   if new && tasks[id] == nil {let task=session.dataTask(with:URL(string:"https://photos.googleapis.com/fixture")!);task.taskDescription=id.uuidString;tasks[id]=task}
+   return try inventoryLocked(id,current:[],newlySubmitted:new)
+  }
+ }
+ func attachBoundaryWaiter(_ id:UUID) async throws -> FileUploadResult {
+  try await withCheckedThrowingContinuation { continuation in
+   lock.withLock {waiters[id]=Waiter(continuation:continuation,progress:{_,_ in})}
+  }
+ }
+ func hasBoundaryWaiter(_ id:UUID)->Bool {lock.withLock {waiters[id] != nil}}
+ func completeFailure(_ id:UUID) {
+  let task=lock.withLock {tasks[id]!}
+  urlSession(session,task:task,didCompleteWithError:URLError(.cancelled))
+ }
+}
+""")
+exports = (ROOT / 'App/Adapters/System/DiagnosticExportStore.swift').read_text()
+a = exports.index('    init(layout:'); b = exports.index('    func export(', a)
+(out / 'ActualDiagnosticExports.swift').write_text(exports[:a] + """
+    init(boundaryRoot:URL) throws {root=boundaryRoot;try StorageLayout.prepareDirectory(root,fileManager:.default)}
+""" + exports[b:])
+(out / 'ActualCommitTimestamp.swift').write_text('import Foundation\nimport CloudifiedCore\nenum CommitTimestampHarness {\n'
+    + section(gpmc, '    static func commitTimestamp(', '    static func commitProfile(') + '}\n')
+presentation = (ROOT / 'App/Application/AppEnvironment+Presentation.swift').read_text()
+(out / 'ActualFailureExplanation.swift').write_text((ROOT / 'App/Adapters/System/FailureExplanation.swift').read_text()
+    + '\n' + presentation[presentation.index('extension Provider { var displayName:'):])
+files = [out / 'ActualBackgroundTransport.swift', out / 'ActualDiagnosticExports.swift', out / 'ActualCommitTimestamp.swift', ROOT / 'App/Adapters/System/StorageLayout.swift', ROOT / 'App/Adapters/GooglePhotos/Protobuf.swift', ROOT / 'scripts/regressions/AuditSecondPass.swift', out / 'ActualTelegramRequest.swift', out / 'ActualFailureExplanation.swift', ROOT / 'scripts/regressions/ProviderEnableBoundary.swift', out / 'ActualProviderEnable.swift', out / 'ActualGoogleSettlement.swift', ROOT / 'scripts/regressions/GoogleSubmissionBoundary.swift', out / 'ActualGoogleQueue.swift', out / 'ActualContinuedProgress.swift', ROOT / 'scripts/regressions/AuditRequestBoundary.swift', out / 'ActualBackupRequest.swift', out / 'ActualLocalReset.swift', ROOT / 'App/Adapters/System/DiagnosticReportUploader.swift', ROOT / 'App/Adapters/System/AppRuntime.swift', out / 'ActualTelegramSettlement.swift', ROOT / 'scripts/regressions/AuditBoundaries.swift', ROOT / 'App/Adapters/GooglePhotos/ForegroundFileUploadTransport.swift', ROOT / 'App/Adapters/PhotoLibrary/StreamingHasher.swift', ROOT / 'App/Adapters/PhotoLibrary/SourceRecipe.swift', ROOT / 'App/Adapters/PhotoLibrary/LosslessVideoPartSplitter.swift', out / 'ActualProgressCoalescer.swift', out / 'ActualPhotoExport.swift', ROOT / 'scripts/regressions/TelegramRecoveryBoundary.swift', ROOT / 'App/Adapters/Telegram/TelegramInputFiles.swift', ROOT / 'App/Presentation/Dashboard/DashboardViewState.swift', out / 'ActualNetworkPolicy.swift', out / 'ActualOwnedRecovery.swift', ROOT / 'scripts/regressions/CoreRegression.swift', ROOT / 'scripts/regressions/PresentationRecovery.swift', ROOT / 'App/Presentation/ScreenStateStore.swift', ROOT / 'App/Presentation/NotUploaded/NotUploadedViewState.swift', ROOT / 'scripts/regressions/CredentialKeyBoundary.swift', ROOT / 'App/Adapters/Security/KeychainCredentialStore.swift', ROOT / 'scripts/regressions/NativeProtocolBoundary.swift', ROOT / 'scripts/regressions/TelegramCensusBoundary.swift', ROOT / 'scripts/regressions/LaneIsolation.swift',
          ROOT / 'App/Adapters/Telegram/TDLibJSON.swift', ROOT / 'App/Adapters/Telegram/TelegramDocumentReference.swift',
          out / 'ActualCensus.swift', out / 'ActualResolution.swift', out / 'ActualProtocolRecovery.swift', out / 'Support.swift', out / 'Errors.swift']
 run(['swiftc', *common, '-parse-as-library', *map(str, files), '-L', str(out),

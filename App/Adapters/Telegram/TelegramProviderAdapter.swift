@@ -767,7 +767,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
                         let expected = try inputFiles.url(transferID: transfer.id, filename: state.filename).path
                         if try Self.matchesOwnedMessage(candidate, chatID: state.chatID, tag: checkpoint.tag,
                             expectedPath: expected, byteCount: state.byteCount) { message = candidate }
-                    } catch { if ProviderSupport.safe(error, domain: .tdlib).code != 404 { throw error } }
+                    } catch { try await deferOwnedLookup(error, checkpoint: checkpoint, lookup: .directMessage) }
                 }
                 if message == nil {
                     message = try await findOwnedMessage(checkpoint: checkpoint, state: state)
@@ -821,12 +821,46 @@ actor TelegramProviderAdapter: ProviderAdapter {
                 diagnostic: DiagnosticDetail(stage: .telegramRecovery, status: .changed, correlationID: UUID(),
                     available: found, items: candidates, pages: pages, reused: local)), decision: .reconcile)
     }
-    /// Positive lookup only: neither an exhausted local cache nor a server
-    /// search miss establishes absence or releases an unresolved native reader.
+    private enum OwnedLookupFailure: Error { case responseInvalid, cursorDidNotAdvance }
+    private func deferOwnedLookup(_ error: any Error, checkpoint: ProviderCheckpoint, lookup: DiagnosticRecoveryLookup) async throws {
+        try Task.checkCancellation()
+        if error is CancellationError { throw error }
+        let failure = ProviderSupport.safe(error, domain: .tdlib)
+        let issue: DiagnosticRecoveryIssue
+        if let lookupError = error as? OwnedLookupFailure {
+            issue = lookupError == .cursorDidNotAdvance ? .cursorDidNotAdvance : .responseInvalid
+        } else if failure.category == .reconciliation && failure.cause == .incompleteHistory {
+            issue = .responseInvalid
+        } else if failure.domain == .tdlib && failure.category == .transfer && failure.code == 404 {
+            issue = .requestRejected
+        } else if failure.domain == .tdlib && failure.category == .timeout && failure.cause == .deadlineExceeded {
+            issue = .requestTimedOut
+        } else { throw error }
+        await traceLookupDeferral(checkpoint, lookup: lookup, issue: issue)
+    }
+    private func traceLookupDeferral(_ checkpoint: ProviderCheckpoint, lookup: DiagnosticRecoveryLookup, issue: DiagnosticRecoveryIssue) async {
+        try? await ledger.appendEvent(.setupTrace,
+            context: EventContext(origin: .telegram, destinationID: checkpoint.destinationID, jobID: checkpoint.jobID,
+                diagnostic: DiagnosticDetail(stage: .telegramRecovery, status: .changed, correlationID: UUID(),
+                    recoveryLookup: lookup, recoveryIssue: issue)), decision: .reconcile, severity: .warning,
+            failure: SafeFailure(.reconciliation, domain: .tdlib, cause: .incompleteHistory))
+    }
+    /// A positive lookup miss never proves absence or releases a native reader.
     private func findOwnedMessage(checkpoint: ProviderCheckpoint, state: State) async throws -> TDLibResponse? {
         let expected = try inputFiles.url(transferID: checkpoint.transferID, filename: state.filename).path
-        if let failed = try await findFailedMessage(checkpoint: checkpoint, state: state, expectedPath: expected) { return failed }
+        do {
+            if let failed = try await findFailedMessage(checkpoint: checkpoint, state: state, expectedPath: expected) { return failed }
+        } catch { try await deferOwnedLookup(error, checkpoint: checkpoint, lookup: .failedOutbox) }
         let deadline = ProcessInfo.processInfo.systemUptime + 15
+        do {
+            if let recent = try await findRecentMessage(checkpoint: checkpoint, state: state, expectedPath: expected, deadline: deadline) { return recent }
+        } catch { try await deferOwnedLookup(error, checkpoint: checkpoint, lookup: .localHistory) }
+        do {
+            return try await findServerMessage(checkpoint: checkpoint, state: state, expectedPath: expected, deadline: deadline)
+        } catch { try await deferOwnedLookup(error, checkpoint: checkpoint, lookup: .serverSearch) }
+        return nil
+    }
+    private func findRecentMessage(checkpoint: ProviderCheckpoint, state: State, expectedPath: String, deadline: TimeInterval) async throws -> TDLibResponse? {
         var pages = 0
         var candidates = Set<Int64>()
         var cursor: Int64 = 0
@@ -836,17 +870,17 @@ actor TelegramProviderAdapter: ProviderAdapter {
             guard remaining > 0 else { return nil }
             let page = try await client.request(["@type": "getChatHistory", "chat_id": state.chatID,
                 "from_message_id": cursor, "offset": 0, "limit": 100, "only_local": true], timeout: min(3, remaining))
-            guard page.type == "messages", let values = page.array(forKey: "messages"), values.count <= 100 else { throw incompleteHistory() }
+            guard page.type == "messages", let values = page.array(forKey: "messages"), values.count <= 100 else { throw OwnedLookupFailure.responseInvalid }
             var oldest = cursor
             pages += 1
             for value in values {
-                guard let fields = value.objectValue else { throw incompleteHistory() }
+                guard let fields = value.objectValue else { throw OwnedLookupFailure.responseInvalid }
                 let message = TDLibResponse(fields: fields)
-                guard let id = message["id"]?.int64Value, id > 0 else { throw incompleteHistory() }
+                guard let id = message["id"]?.int64Value, id > 0 else { throw OwnedLookupFailure.responseInvalid }
                 if oldest == 0 || id < oldest { oldest = id }
                 if (try? TelegramDocumentReference.captionTag(message)) == checkpoint.tag { candidates.insert(id) }
                 if try Self.matchesOwnedMessage(message, chatID: state.chatID, tag: checkpoint.tag,
-                    expectedPath: expected, byteCount: state.byteCount) {
+                    expectedPath: expectedPath, byteCount: state.byteCount) {
                     await traceOwnedLookup(checkpoint, pages: pages, candidates: candidates.count, found: true, local: true)
                     return message
                 }
@@ -855,26 +889,31 @@ actor TelegramProviderAdapter: ProviderAdapter {
             cursor = oldest
         }
         await traceOwnedLookup(checkpoint, pages: pages, candidates: candidates.count, found: false, local: true)
-        pages = 0; candidates.removeAll(); cursor = 0
+        return nil
+    }
+    private func findServerMessage(checkpoint: ProviderCheckpoint, state: State, expectedPath: String, deadline: TimeInterval) async throws -> TDLibResponse? {
+        var pages = 0
+        var candidates = Set<Int64>()
+        var cursor: Int64 = 0
         var visited = Set<Int64>()
         for _ in 0..<3 {
             try Task.checkCancellation()
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
             guard remaining > 0 else { return nil }
-            guard visited.insert(cursor).inserted else { throw incompleteHistory() }
+            guard visited.insert(cursor).inserted else { throw OwnedLookupFailure.cursorDidNotAdvance }
             let page = try await client.request(["@type": "searchChatMessages", "chat_id": state.chatID,
                 "query": ContentIdentity.version + ":" + checkpoint.tag, "from_message_id": cursor,
                 "offset": 0, "limit": 100, "filter": ["@type": "searchMessagesFilterDocument"]], timeout: min(5, remaining))
             guard page.type == "foundChatMessages", let values = page.array(forKey: "messages"), values.count <= 100,
-                  let next = page["next_from_message_id"]?.int64Value, next >= 0 else { throw incompleteHistory() }
+                  let next = page["next_from_message_id"]?.int64Value, next >= 0 else { throw OwnedLookupFailure.responseInvalid }
             pages += 1
             for value in values {
-                guard let fields = value.objectValue else { throw incompleteHistory() }
+                guard let fields = value.objectValue else { throw OwnedLookupFailure.responseInvalid }
                 let message = TDLibResponse(fields: fields)
-                guard let id = message["id"]?.int64Value, id > 0 else { throw incompleteHistory() }
+                guard let id = message["id"]?.int64Value, id > 0 else { throw OwnedLookupFailure.responseInvalid }
                 if (try? TelegramDocumentReference.captionTag(message)) == checkpoint.tag { candidates.insert(id) }
                 if try Self.matchesOwnedMessage(message, chatID: state.chatID, tag: checkpoint.tag,
-                    expectedPath: expected, byteCount: state.byteCount) {
+                    expectedPath: expectedPath, byteCount: state.byteCount) {
                     await traceOwnedLookup(checkpoint, pages: pages, candidates: candidates.count, found: true, local: false)
                     return message
                 }
@@ -899,16 +938,16 @@ actor TelegramProviderAdapter: ProviderAdapter {
                 "query": "", "from_message_id": cursor, "offset": 0, "limit": 100,
                 "filter": ["@type": "searchMessagesFilterFailedToSend"]], timeout: min(3, remaining))
             guard page.type == "foundChatMessages", let values = page.array(forKey: "messages"), values.count <= 100,
-                  let next = page["next_from_message_id"]?.int64Value, next >= 0,
-                  next == 0 || (next != cursor && (cursor == 0 || next < cursor)) else { throw incompleteHistory() }
+                  let next = page["next_from_message_id"]?.int64Value, next >= 0 else { throw OwnedLookupFailure.responseInvalid }
             for value in values {
-                guard let fields = value.objectValue else { throw incompleteHistory() }
+                guard let fields = value.objectValue else { throw OwnedLookupFailure.responseInvalid }
                 let message = TDLibResponse(fields: fields)
                 if try Self.matchesOwnedMessage(message, chatID: state.chatID, tag: checkpoint.tag,
                     expectedPath: expectedPath, byteCount: state.byteCount) { return message }
             }
             if next == 0 { break }
-            guard !values.isEmpty else { throw incompleteHistory() }
+            guard next != cursor && (cursor == 0 || next < cursor) else { throw OwnedLookupFailure.cursorDidNotAdvance }
+            guard !values.isEmpty else { throw OwnedLookupFailure.responseInvalid }
             cursor = next
         }
         return nil

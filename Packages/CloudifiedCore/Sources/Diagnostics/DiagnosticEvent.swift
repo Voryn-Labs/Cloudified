@@ -91,6 +91,12 @@ public enum DiagnosticReportRejection: String, Codable, Sendable {
     case contentTooLarge, invalidExpiry, rateLimited, invalidRequest, unknown
 }
 public enum DiagnosticBackupIntent: String, Codable, Sendable { case automatic, explicit }
+public enum DiagnosticRecoveryLookup: String, Codable, Sendable {
+    case directMessage, failedOutbox, localHistory, serverSearch
+}
+public enum DiagnosticRecoveryIssue: String, Codable, Sendable {
+    case responseInvalid, cursorDidNotAdvance, requestRejected, requestTimedOut
+}
 public enum DiagnosticCoreError: String, Codable, Sendable {
     case invalidContract, invalidTransition, recoveryRequired, staleMapping, stagedUnavailable, persistence
 }
@@ -121,6 +127,8 @@ public struct DiagnosticDetail: Codable, Sendable {
     public let pages: Int?
     public let reused: Bool?
     public let coreError: DiagnosticCoreError?
+    public let recoveryLookup: DiagnosticRecoveryLookup?
+    public let recoveryIssue: DiagnosticRecoveryIssue?
     public init(stage: DiagnosticStage, status: DiagnosticStatus, correlationID: UUID,
                 nativeMethod: DiagnosticNativeMethod? = nil, httpStatus: Int? = nil,
                 responseBytes: Int? = nil, available: Bool? = nil, wifi: Bool? = nil,
@@ -131,7 +139,9 @@ public struct DiagnosticDetail: Codable, Sendable {
                 foreground: Bool? = nil, backgroundExecutionAllowed: Bool? = nil,
                 lowPowerMode: Bool? = nil, backupIntent: DiagnosticBackupIntent? = nil,
                 policyCause: KnownCause? = nil, items: Int? = nil, pages: Int? = nil, reused: Bool? = nil,
-                coreError: DiagnosticCoreError? = nil) {
+                coreError: DiagnosticCoreError? = nil,
+                recoveryLookup: DiagnosticRecoveryLookup? = nil,
+                recoveryIssue: DiagnosticRecoveryIssue? = nil) {
         self.stage = stage; self.status = status; self.correlationID = correlationID
         self.nativeMethod = nativeMethod; self.httpStatus = httpStatus; self.responseBytes = responseBytes
         self.available = available; self.wifi = wifi; self.expensive = expensive; self.constrained = constrained
@@ -144,6 +154,7 @@ public struct DiagnosticDetail: Codable, Sendable {
         self.lowPowerMode = lowPowerMode; self.backupIntent = backupIntent; self.policyCause = policyCause
         self.items = items; self.pages = pages; self.reused = reused
         self.coreError = coreError
+        self.recoveryLookup = recoveryLookup; self.recoveryIssue = recoveryIssue
     }
 }
 

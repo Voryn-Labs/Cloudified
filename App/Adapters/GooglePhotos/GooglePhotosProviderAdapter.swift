@@ -32,8 +32,8 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
             return (try? await queuedBytes(destination)) != nil
         }
     }
-    /// Only inventoried single-original OS tasks may share capacity. Ambiguous
-    /// results, restored readers and oversized/paired work require settlement.
+    /// Inventoried single-original readers and unreadable results retain exact
+    /// queue/storage budgets. Other terminal, oversized or paired work must settle.
     private func queuedBytes(_ requested: Destination) async throws -> Int64? {
         let retained = try await ledger.retainedTransfers(destinationID: requested.id, limit: 8)
         guard retained.count < Self.queueLimit else { return nil }
@@ -50,7 +50,11 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                   let checkpoint = try await ledger.providerCheckpoint(destinationID: requested.id, tag: transfer.resource.tag),
                   checkpoint.transferID == transfer.id, checkpoint.jobID == transfer.job.id,
                   checkpoint.phase == .transferring, !checkpoint.inputsTerminal,
-                  case .active? = inventory[transfer.id] else { return nil }
+                  let status = inventory[transfer.id] else { return nil }
+            switch status {
+            case .active, .unavailable: break // Both keep their exact input and queue budget.
+            default: return nil
+            }
             let size = transfer.resource.originals[0].byteCount
             guard size >= 0, size <= Self.queueBytes - bytes else { return nil }
             bytes += size
@@ -153,12 +157,23 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                 case .active: stage = .googleTransferActive; failure = nil
                 case .completed: stage = .googleTransferCompleted; failure = nil
                 case .absent: stage = .googleTransferAbsent; failure = nil
-                case .failed(let value): stage = .googleTransferFailed; failure = value
+                case .failed(let value), .unavailable(let value, _): stage = .googleTransferFailed; failure = value
                 }
                 let context = EventContext(origin: .google, destinationID: requested.id, jobID: transfer.job.id, resourceID: transfer.resource.id,
                     diagnostic: DiagnosticDetail(stage: stage, status: failure == nil ? .changed : .failed, correlationID: transfer.id))
                 try await ledger.appendEvent(.setupTrace, context: context, decision: .reconcile, severity: failure == nil ? .info : .warning, failure: failure)
                 if case .active = inventory { owned.insert(transfer.id); continue }
+                var unreadableResult: SafeFailure?
+                if case .unavailable(let failure, let readerActive) = inventory, !readerActive { unreadableResult = failure }
+                if case .unavailable(let failure, let readerActive) = inventory, readerActive {
+                    owned.insert(transfer.id)
+                    if transfer.job.state != .waiting && transfer.job.state != .failed {
+                        try await ledger.failAttempt(jobID: transfer.job.id,
+                            failure: UploadFailure(failure, disposition: .waiting, acceptance: .unknown, didStartTransfer: false),
+                            resourceID: transfer.resource.id, transferID: transfer.id)
+                    }
+                    continue
+                }
                 if !finalize {
                     switch inventory {
                     case .completed, .failed: owned.insert(transfer.id); continue
@@ -227,14 +242,16 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                 if let receipt = try acceptedReceipt(requested, transfer.resource, state) {
                     try await save(transfer.job.id, requested, transfer.resource, transfer.id, .confirmed, state)
                     try await ledger.confirm(receipt, jobID: transfer.job.id, resourceID: transfer.resource.id)
-                } else if try await ledger.job(transfer.job.id).state == .uploading {
+                } else if try await ledger.job(transfer.job.id).state == .uploading || unreadableResult != nil {
                     // Reclaim a submitted job after a crash between checkpoint
                     // writes. Only committing/uncertain phases fence acceptance.
                     let uncertain = phase == .committing || phase == .uncertain
                     try await ledger.failAttempt(jobID: transfer.job.id,
-                        failure: UploadFailure(SafeFailure(uncertain ? .reconciliation : .connectivity,
+                        failure: UploadFailure(unreadableResult ?? SafeFailure(uncertain ? .reconciliation : .connectivity,
                             domain: .google, cause: uncertain ? .outcomeUnknown : .interrupted),
-                            disposition: .waiting, acceptance: uncertain ? .unknown : .definitelyNotAccepted, didStartTransfer: false),
+                            disposition: unreadableResult != nil && !uncertain ? .retryable : .waiting,
+                            acceptance: uncertain ? .unknown : .definitelyNotAccepted,
+                            didStartTransfer: unreadableResult != nil && checkpoint.phase == .transferring),
                         resourceID: transfer.resource.id, transferID: transfer.id)
                 }
                 try await files.transportFinished(transfer.id)
@@ -426,7 +443,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
             if wroteCheckpoint, let background {
                 do {
                     switch try await background.inventory(transferID) {
-                    case .active, .completed, .failed:
+                    case .active, .completed, .failed, .unavailable:
                         await pump.stop()
                         return .failed(UploadFailure(safe, disposition: .waiting, acceptance: .unknown), .retainedByTransport)
                     case .absent: break // No OS reader/result to retain or wake us.

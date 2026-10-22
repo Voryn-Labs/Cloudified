@@ -3,7 +3,10 @@ import Foundation
 
 actor QueueInventoryBoundary {
     nonisolated let continuesAfterProcessExit = true
-    enum Inventory: Sendable { case active, absent, completed(FileUploadResult), failed(SafeFailure) }
+    enum Inventory: Sendable { case active, absent, completed(FileUploadResult), failed(SafeFailure), unavailable(SafeFailure, readerActive: Bool) }
+    var unavailable: Set<UUID> = []
+    func loseJournal(_ id: UUID, readerActive: Bool = true) { unavailable.insert(id); if !readerActive { readers.remove(id) } }
+    func repairJournal(_ id: UUID) { unavailable.remove(id) }
     var readers: Set<UUID> = []
     var completed: Set<UUID> = []
     func setReaders(_ value: Set<UUID>) { readers = value }
@@ -13,6 +16,7 @@ actor QueueInventoryBoundary {
         try Dictionary(uniqueKeysWithValues: ids.map { ($0, try inventory($0)) })
     }
     func inventory(_ id: UUID) throws -> Inventory {
+        if unavailable.contains(id) { return .unavailable(SafeFailure(.transfer, domain: .fileSystem, cause: .unknown), readerActive: readers.contains(id)) }
         if completed.contains(id) {
             return .completed(FileUploadResult(data: Data([1]), response: HTTPURLResponse(
                 url: URL(string: "https://photos.googleapis.com/")!, statusCode: 200, httpVersion: nil, headerFields: nil)!))
@@ -115,6 +119,13 @@ func googleSubmissionChecks(root: URL) async throws {
 
     let admission = GoogleQueueHarness(ledger, inventory)
     check(try await admission.allowsAnother(destination), "settled submission did not free queue slot")
+    let unreadable = try await ledger.retainedTransfers(destinationID: destination.id)[0]
+    await inventory.loseJournal(unreadable.id)
+    _ = try await recovered.settle(destination, finalize: true)
+    check(try await ledger.job(unreadable.job.id).state == .reconciling, "unreadable transfer not marked for user")
+    check(try await ledger.hasRetainedTransfers(jobID: unreadable.job.id), "unreadable result lost its protected reader")
+    check(try await admission.allowsAnother(destination), "one unreadable result blocked other small originals")
+    await inventory.repairJournal(unreadable.id)
     let first = (try await ledger.retainedTransfers(destinationID: destination.id))[0]
     await inventory.complete(first.id)
     check(try await !admission.allowsAnother(destination), "uncommitted terminal result admitted more work")
@@ -157,6 +168,25 @@ func googleSubmissionChecks(root: URL) async throws {
     }
     check(unknown == 1 && confirmed == 1, "ambiguous commit blocked next receipt or was falsely confirmed")
     check(try await ledger.retainedTransfers(destinationID: destination.id).isEmpty, "terminal unknown commit retained an OS reader")
+    let lost = try await fixture(root), lostJob = try await start(lost)
+    let lostFiles = try FileLeaseStore(root: root.appendingPathComponent(UUID().uuidString), ledger: lost.ledger)
+    let writer = try await lostFiles.beginExport(fileID: UUID())
+    try Data([1,2,3]).write(to: writer.publishedURL)
+    let reservation = try await lost.ledger.reserveStorage(bytes: 3, availableBytes: 2_000_000_000, transportOverhead: 0)
+    let leased = try await lostFiles.registerPublished(fileID: writer.fileID, byteCount: 3, reservationID: reservation.id, reexportable: true)
+    try await lostFiles.endExport(writer)
+    let lostID = UUID()
+    try await lostFiles.hold(files: [leased], transferID: lostID, job: lostJob, resourceID: lost.resource.id)
+    try await lostFiles.release(leased)
+    let lostInventory = QueueInventoryBoundary()
+    let lostTransfer = try await lost.ledger.retainedTransfers(destinationID: lost.destination.id)[0]
+    let absentRecovery = GoogleSettlementHarness(lost.ledger, lostFiles, lostInventory)
+    try await absentRecovery.install(lostTransfer)
+    await lostInventory.loseJournal(lostID, readerActive: false)
+    _ = try await absentRecovery.settle(lost.destination, finalize: true)
+    check(try await !lost.ledger.hasRetainedTransfers(jobID: lostJob.id), "absent OS reader with lost journal retained capacity forever")
+    let lostState = try await lost.ledger.job(lostJob.id)
+    check(lostState.state == .delayed && lostState.attempts == 1, "lost result fabricated success or bypassed logical attempt")
     print("PASS actual Google submission: four bounded durable jobs, no false saved/failure, protected cleanup, terminal/unknown reader gates, oversized exclusion, claim release; finite continued progress")
 }
 

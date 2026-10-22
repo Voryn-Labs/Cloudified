@@ -595,6 +595,15 @@ actor GPMCClient {
         return error.message.localizedCaseInsensitiveContains("valid blueprint")
     }
 
+    static func commitTimestamp(_ date: Date) throws -> Data {
+        let value = date.timeIntervalSince1970
+        guard value.isFinite, value >= -62_135_596_800, value < 253_402_300_800 else {
+            throw CoreError.invalidContract
+        }
+        let seconds = floor(value)
+        let nanos = UInt64(min(999_999_999, max(0, (value - seconds) * 1_000_000_000)))
+        return Proto.int(1, UInt64(bitPattern: Int64(seconds))) + Proto.int(2, nanos)
+    }
     static func commitProfile(useQuota: Bool, saver: Bool) -> (model: String, quality: UInt64) {
         (useQuota ? "Pixel 8" : (saver ? "Pixel 2" : "Pixel XL"), saver ? 1 : 3)
     }
@@ -606,9 +615,9 @@ actor GPMCClient {
         }
         try Self.validateReceipt(receipt)
         phase(.finalizing)
-        let stamp = UInt64(max(0, prepared.modified.timeIntervalSince1970))
+        let timestamp = try Self.commitTimestamp(prepared.modified)
         let profile = Self.commitProfile(useQuota: useQuota, saver: saver)
-        var metadata = Proto.bytes(1, receipt) + Proto.string(2, prepared.filename) + Proto.bytes(3, prepared.hash) + Proto.bytes(4, Proto.int(1, stamp) + Proto.int(2, 46_000_000)) + Proto.int(7, profile.quality) + Proto.int(10, 1)
+        var metadata = Proto.bytes(1, receipt) + Proto.string(2, prepared.filename) + Proto.bytes(3, prepared.hash) + Proto.bytes(4, timestamp) + Proto.int(7, profile.quality) + Proto.int(10, 1)
         if let pairedStillHash {
             metadata += Proto.bytes(9, Proto.int(2, 1) + Proto.bytes(3, pairedStillHash))
         }

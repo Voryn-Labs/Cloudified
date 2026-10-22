@@ -18,12 +18,12 @@ enum FailureExplanation {
         case .databaseKeyUnavailable: return "Cloudified cannot unlock its local Telegram connection data. Try the original signing identity first. Settings → Telegram offers a local connection reset only when no unresolved uploads need that data. Your uploaded channel files are unchanged."
         case .nativeResponseInvalid: return "Cloudified could not decode a Telegram response. This is a connection protocol error, not an unsupported photo format. Protected uploads require recovery before another send."
         case .nativeResponseLimit: return "A Telegram response exceeded Cloudified's decoder capacity. Existing uploads remain protected while the connection recovers. Export diagnostics if this repeats."
-        case .identityUnverified: return "Google could not verify this signed-in account\(failure.code.map { " (HTTP \($0))" } ?? ""). Open Logs for the identity or token-verification result."
+        case .identityUnverified: return "Google could not verify this signed-in account\(failure.code.map { " (HTTP \($0))" } ?? ""). Open Google Photos in Settings to retry verification or sign in again."
         case .pairingUnverified: return "Google could not verify this Live Photo as one paired item. Choose a Live Photo fallback in Settings, or retry this item in Activity. Accepted components stay protected from duplicate uploads."
         case .pendingSendUnmatched: return "Telegram has not provided a verifiable result for this file. It is not counted as saved. Its original stays protected while other eligible files continue."
         case .privateChannelRequired: return "Telegram requires a channel you own, with no public username and auto-delete turned off."
         case .accountChanged: return "The account or channel differs from this upload's verified destination. Reconnect the original mapping."
-        case .loginRequired: return "Authentication is required. Open this destination in Settings."
+        case .loginRequired: return "Your sign-in is missing or no longer valid. Open this destination in Settings and sign in again."
         case .permissionDenied: return "Access was denied. Check Photos permission or the destination's permissions."
         case .insufficientSpace: return "More device space is needed to stage the original safely. Other admissible assets can continue."
         case .formatRejected: return "The original format or resource layout is unsupported by this destination. No quality conversion was made."
@@ -57,8 +57,42 @@ enum FailureExplanation {
         case .phoneNumberInvalid: return "Enter the full international phone number, starting with + and the country code. Spaces and brackets are allowed. Telegram must accept this number before sending a code."
         case .phoneNumberBanned: return "Telegram reports that this phone number is banned. This cannot be fixed by retrying Cloudified."
         case .applicationCredentialsRejected: return "Telegram rejected the API application credentials. Check the API ID and hash together in Settings; Logs contain the exact safe rejection name."
-        case .authenticationRejected: return "Telegram rejected this sign-in step. Open Logs for the safe rejection name before retrying."
+        case .authenticationRejected: return "Telegram rejected this sign-in step. Check the phone number, enter the latest code or check your two-step verification password in Telegram account settings."
         }
+    }
+    static func destinationAttention(_ failure: SafeFailure) -> ProviderCardState.Attention? {
+        if [.setupUnavailable, .initializationFailed, .databaseKeyUnavailable, .nativeResponseInvalid, .nativeResponseLimit].contains(failure.cause) { return .connection }
+        if [.photos, .fileSystem, .sqlite].contains(failure.domain) { return nil }
+        if failure.cause == .loginRequired || failure.cause == .identityUnverified { return .signIn }
+        switch failure.category {
+        case .rateLimit: return .rateLimit
+        case .quota: return .storage
+        case .authentication, .accessDenied: return .account
+        default: return nil
+        }
+    }
+    static func destinationMessage(_ failure: SafeFailure, provider: Provider, resumeAt: Date?) -> String {
+        let scope = "Only \(provider.displayName) is paused. "
+        if failure.category == .rateLimit {
+            if let resumeAt {
+                return scope + "\(provider.displayName) has temporarily limited requests. Cloudified will retry no earlier than \(resumeAt.formatted(date: .abbreviated, time: .shortened)); leave backup enabled. Signing in again will not remove this limit."
+            }
+            return scope + "\(provider.displayName) has temporarily limited requests without giving a retry time. Wait before retrying in account settings. Signing in again will not remove this limit."
+        }
+        if failure.cause == .loginRequired {
+            return scope + "Your sign-in is missing or no longer valid. Open this account and sign in again to continue. Existing uploads stay saved."
+        }
+        if failure.cause == .identityUnverified {
+            return scope + "Cloudified could not verify your Google account. Open the account, retry verification or sign in again."
+        }
+        if failure.cause == .privateChannelRequired { return scope + message(failure) + " Review the channel in Telegram account settings." }
+        if failure.category == .accessDenied {
+            return scope + "This account does not have the required access. Review its permissions and connected destination in account settings."
+        }
+        if failure.category == .quota {
+            return scope + "The account reports a storage limit. Free space or review its storage plan before retrying."
+        }
+        return scope + message(failure)
     }
     static func remedy(_ failure: SafeFailure?) -> String {
         guard let failure else { return "Check the pending operation's status before retrying." }

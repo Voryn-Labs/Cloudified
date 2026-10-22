@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.5 — 2026-10-22
+
+### Upload recovery and retries
+
+- Keep checking other Telegram recovery sources when an individual lookup is
+  missing, times out or returns an unusable history page. Uncertain sends remain
+  protected and are verified before another upload.
+- Isolate Google transfer-journal errors so one damaged result does not block
+  unrelated files. Reconcile system tasks that have ended and release stranded
+  upload waiters without treating an unknown Google commit as absent.
+- Move retryable file failures behind other ready items. Each item and destination
+  has at most three automatic send attempts; exhausted failures remain in
+  **Activity → Needs attention**, with identifying details and manual Retry.
+- Show destination-specific guidance for expired sign-ins, access problems,
+  storage limits and Telegram rate limits, including a retry time when available.
+  Account-wide problems pause the affected destination while the other can continue.
+- Wait for upload-completion callbacks before ending a backup run or settling a
+  destination, preventing premature teardown during recovery.
+
+### Resource handling and diagnostics
+
+- Drain temporary framework objects during photo scanning and streamed file writes.
+- Preserve signed capture timestamps and real fractional seconds in Google upload
+  metadata, including dates before 1970.
+- Retain diagnostic-export cleanup ownership after a failed deletion so cleanup
+  can be retried, and record preparation errors before attempting cleanup.
+- Clarify Older/Newest navigation in bounded activity history and explain retry
+  behavior in the failure list and FAQ.
+
+Original media bytes, pinned dependencies and bounded native-reader protection
+are retained. Recovery can still wait when the remote outcome cannot be verified;
+Cloudified does not blindly resend such items. Background time remains controlled
+by iOS.
+
 ## 0.4 — 2026-10-21
 
 ### Background backup reliability

@@ -10,27 +10,46 @@ public struct ProviderStatusCard: View {
     }
 
     public var body: some View {
-        NavigationLink { details } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    SymbolTile(systemName: symbol, pulse: state.savedCount ?? 0)
-                    Text(state.name).font(.headline).foregroundStyle(.primary).lineLimit(1).layoutPriority(1)
-                    Spacer(minLength: 4)
-                    StatusPill(title: status, symbol: statusSymbol, color: statusColor)
+        VStack(alignment: .leading, spacing: 12) {
+            NavigationLink { details } label: {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        SymbolTile(systemName: symbol, pulse: state.savedCount ?? 0)
+                        Text(state.name).font(.headline).foregroundStyle(.primary).lineLimit(1).layoutPriority(1)
+                        Spacer(minLength: 4)
+                        StatusPill(title: status, symbol: statusSymbol, color: statusColor)
+                    }
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(state.savedCount.map { $0.formatted() } ?? "—").font(.title2.weight(.semibold)).foregroundStyle(.primary)
+                        Text(state.totalCount.map { "of \($0.formatted()) saved" } ?? "Not scanned")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }.monospacedDigit()
+                    BackupMeter(fraction: fraction)
+                    Text(footer).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(state.savedCount.map { $0.formatted() } ?? "—").font(.title2.weight(.semibold)).foregroundStyle(.primary)
-                    Text(state.totalCount.map { "of \($0.formatted()) saved" } ?? "Not scanned")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }.monospacedDigit()
-                BackupMeter(fraction: fraction)
-                Text(footer).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                    .lineLimit(2, reservesSpace: true).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
             }
-            .padding(.vertical, 8)
+            .accessibilityHint("Opens current upload, remaining counts, issues and account settings")
+            accountNotice
         }
-        .accessibilityHint("Opens current upload, remaining counts, issues and account settings")
+    }
+    @ViewBuilder private var accountNotice: some View {
+        if let attention = state.attention, let message = state.attentionMessage {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(attention.title, systemImage: attention == .rateLimit ? "clock.badge.exclamationmark" : "exclamationmark.circle")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+                Text(message).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if attention == .storage {
+                    if state.name == "Google Photos" { Link("Manage storage", destination: URL(string: "https://one.google.com/storage")!) }
+                    else { Button("Review account settings", action: onSettingsTapped).buttonStyle(.bordered) }
+                } else if let title = attention.actionTitle {
+                    Button(title, action: onSettingsTapped).buttonStyle(.bordered)
+                }
+            }
+            .padding(.bottom, 8)
+        }
     }
 
     private var symbol: String { state.name == "Telegram" ? "paperplane.fill" : "photo.stack.fill" }
@@ -41,7 +60,7 @@ public struct ProviderStatusCard: View {
     private var status: String {
         if !state.isConnected { return "Connect" }
         if !state.isEnabled { return "Off" }
-        if state.attention != nil { return "Check" }
+        if let attention = state.attention { return attention == .rateLimit ? "Limited" : "Action needed" }
         if let transfer { return transfer.fractionCompleted == nil ? "Working" : (transfer.fractionCompleted == 1 ? "Verifying" : "Uploading") }
         if (state.failedCount ?? 0) > 0 { return "Issues" }
         if state.remainingCount == 0 { return "Saved" }
@@ -73,6 +92,7 @@ public struct ProviderStatusCard: View {
                 FlowIntro(systemName: symbol, title: state.name, message: state.connectionDescription).privacySensitive()
                 CurrentTransferCard(transfer: transfer, provider: state.name, idleActivity: state.currentActivity)
             }
+            if state.attention != nil { Section { accountNotice } }
             Section("Backup progress") {
                 stat("Saved", state.savedCount)
                 stat("Remaining", state.remainingCount)
@@ -90,7 +110,7 @@ public struct ProviderStatusCard: View {
             }
             Section {
                 Button(action: onSettingsTapped) { Label(state.isConnected ? "Account settings" : "Connect account", systemImage: "person.crop.circle") }
-                if state.attention == .storage { Link("Manage Google storage", destination: URL(string: "https://one.google.com/storage")!) }
+                if state.attention == .storage && state.name == "Google Photos" { Link("Manage Google storage", destination: URL(string: "https://one.google.com/storage")!) }
             }
         }
         .cloudifiedList().navigationTitle(state.name).navigationBarTitleDisplayMode(.inline)

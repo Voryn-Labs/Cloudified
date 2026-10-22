@@ -16,8 +16,9 @@ actor DiagnosticExportStore {
         catch { active.remove(url); try? FileManager.default.removeItem(at: url); throw error }
     }
     func release(_ url: URL) throws {
-        guard active.remove(url) != nil else { return }
-        try FileManager.default.removeItem(at: url)
+        guard active.contains(url) else { return }
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        active.remove(url)
     }
     /// Only old exact UUID export files in our canonical directory, <=100 entries.
     func removeStale(now: Date = Date()) throws {

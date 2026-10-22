@@ -46,7 +46,9 @@ extension AppEnvironment {
         guard await engine.requestRecoveryAdmission(provider) else {
             forceRecovery.insert(provider); return
         }
+        var recoveryDestination: Destination?
         do {
+            recoveryDestination = try await ledger.selectedDestination(provider)
             if provider == .google {
                 guard let session = googleSession else { throw SafeFailure(.invariant, domain: .core, cause: .setupUnavailable) }
                 if !(await session.hasConfiguredCredential) {
@@ -89,7 +91,19 @@ extension AppEnvironment {
             providerErrors.removeValue(forKey: provider)
             if provider == .google { settingsState.googleAuthErrorMessage = nil }
             else { settingsState.telegramAuthErrorMessage = nil }
-        } catch { await report(error, provider: provider) }
+        } catch {
+            let failure = ProviderSupport.safe(error, domain: provider == .google ? .google : .tdlib)
+            if let destination = recoveryDestination,
+               [.authentication, .accessDenied, .quota, .rateLimit].contains(failure.category) {
+                do {
+                    let deadline = (error as? TDLibRequestRejection)?.retryAfter ?? (error as? SafeProviderFailure)?.retryAfter
+                    try await ledger.blockDestination(destination.id, failure: failure, resumeAt: deadline)
+                    retryDeadlines[provider] = deadline
+                    scheduleRetryDeadline(retryDeadlines.values.min())
+                } catch { await report(error, provider: nil) }
+            }
+            await report(error, provider: provider)
+        }
         await engine.finishRecoveryAdmission(provider)
     }
     func recoverMapping(_ destination: Destination) async throws {

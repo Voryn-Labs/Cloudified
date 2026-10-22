@@ -75,15 +75,28 @@ func networkPolicyChecks() async throws {
     print("PASS actual TDLib policy: concurrent resume joins in-flight pause, latest gate acknowledged, unchanged gate suppressed")
 }
 
+actor NativeRequestBoundary {
+    let error: TDLibError
+    init(_ error: TDLibError) { self.error = error }
+    func sendRequest(_ request: sending [String: Any], timeout: TimeInterval) throws -> TDLibResponse {
+        precondition(request["@type"] as? String == "getMe")
+        throw error
+    }
+}
 actor OwnedRecoveryBoundary {
     let message: TDLibResponse?
     let local: Bool
     let looping: Bool
     let failed: Bool
+    let failedLoop: Bool, invalidLocal: Bool
+    let rejection: SafeFailure?
+    let cancelled: Bool
     private var serverRequests = 0
     private var failedRequests = 0
-    init(_ message: TDLibResponse?, local: Bool = false, looping: Bool = false, failed: Bool = false) {
+    init(_ message: TDLibResponse?, local: Bool = false, looping: Bool = false, failed: Bool = false,
+         failedLoop: Bool = false, invalidLocal: Bool = false, rejection: SafeFailure? = nil, cancelled: Bool = false) {
         self.message = message; self.local = local; self.looping = looping; self.failed = failed
+        self.failedLoop = failedLoop; self.invalidLocal = invalidLocal; self.rejection = rejection; self.cancelled = cancelled
     }
     func failedSearches() -> Int { failedRequests }
     func searches() -> Int { serverRequests }
@@ -101,16 +114,20 @@ actor OwnedRecoveryBoundary {
             return TDLibResponse(fields: file.fields.merging(["@type":.string("file")]) {_,new in new})
         }
         if method == "getChatHistory" {
+            if invalidLocal { return TDLibResponse(fields: ["@type": .string("messages")]) }
             return TDLibResponse(fields: ["@type": .string("messages"),
                 "messages": .array(local ? [TDLibValue.object(message!.fields)] : [])])
         }
         precondition(method == "searchChatMessages" && request["query"] as? String != nil && timeout <= 5)
         let isFailed = (request["filter"] as? [String:String])?["@type"] == "searchMessagesFilterFailedToSend"
-        if isFailed { precondition(request["query"] as? String == ""); failedRequests += 1 }
-        else { serverRequests += 1 }
+        if isFailed {
+            precondition(request["query"] as? String == ""); failedRequests += 1
+            if let rejection { throw rejection }
+            if cancelled { throw CancellationError() }
+        } else { serverRequests += 1 }
         return TDLibResponse(fields: ["@type": .string("foundChatMessages"),
-            "messages": .array((isFailed ? (failed ? message : nil) : (failed ? nil : message)).map { [.object($0.fields)] } ?? []),
-            "next_from_message_id": .integer(!isFailed && looping ? 50 : 0)])
+            "messages": .array(isFailed && failedLoop && !(failed && failedRequests > 1) ? [.object(["@type":.string("message"), "id":.integer(50)])] : (isFailed ? (failed ? message : nil) : (failed ? nil : message)).map { [.object($0.fields)] } ?? []),
+            "next_from_message_id": .integer(isFailed ? (failedLoop ? 50 : 0) : (looping ? 50 : 0))])
     }
 }
 func ownedRecoveryChecks(root: URL) async throws {
@@ -160,16 +177,39 @@ func ownedRecoveryChecks(root: URL) async throws {
     let failed = OwnedRecoveryBoundary(message(path: expected), failed: true)
     check(try await OwnedRecoveryHarness(input, failed).lookup(checkpoint, fileID: 999) != nil,
         "old failed send outside recent history not recovered")
+    let boundaryMatch = OwnedRecoveryBoundary(message(path: expected), failed: true, failedLoop: true)
+    check(try await OwnedRecoveryHarness(input, boundaryMatch).lookup(checkpoint, fileID: 7) != nil,
+        "matching owned send discarded just because next cursor repeats")
+    check(await boundaryMatch.failedSearches() == 2, "failed cursor-boundary fixture did not exercise second page")
     let failedCount = await failed.failedSearches(), serverCount = await failed.searches()
     check(failedCount == 1 && serverCount == 0, "failed search not used before server lookup")
     check(!TelegramInputFiles.matchesOwnedPath(old.replacingOccurrences(of: "Application/", with: "Other/"), expected: new), "foreign namespace accepted")
     check(!TelegramInputFiles.matchesOwnedPath(old.replacingOccurrences(of: "/Library/", with: "/../Library/"), expected: new), "traversal accepted")
     let looping = OwnedRecoveryBoundary(nil, looping: true)
+    let loopHarness = OwnedRecoveryHarness(input, looping)
+    check(try await loopHarness.lookup(checkpoint, fileID: 7) == nil, "incomplete positive lookup fabricated presence")
+    let loops = await looping.searches(), deferred = await loopHarness.deferred()
+    check(loops == 2 && deferred == [.serverSearch], "unbounded or unreported server cursor")
+    let fallback = OwnedRecoveryBoundary(message(path: expected), failedLoop: true, invalidLocal: true)
+    let fallbackHarness = OwnedRecoveryHarness(input, fallback)
+    check(try await fallbackHarness.lookup(checkpoint, fileID: 7) != nil, "incomplete stage prevented later positive recovery")
+    check(await fallbackHarness.deferred() == [.failedOutbox, .localHistory], "stage deferral not observable")
+    let timedOut = OwnedRecoveryHarness(input, OwnedRecoveryBoundary(nil, rejection: SafeFailure(.timeout, domain: .tdlib, cause: .deadlineExceeded)))
+    check(try await timedOut.lookup(checkpoint, fileID: 7) == nil, "one read-only lookup timeout blocked file protection")
+    check(await timedOut.deferred() == [.failedOutbox], "lookup timeout not recorded")
+    for failure in [SafeFailure(.authentication, domain: .tdlib, code: 401, cause: .loginRequired),
+                    SafeFailure(.rateLimit, domain: .tdlib, code: 429, cause: .serverRateLimit),
+                    SafeFailure(.connectivity, domain: .tdlib, cause: .offline),
+                    SafeFailure(.invariant, domain: .sqlite, cause: .persistenceFailed)] {
+        let rejected = OwnedRecoveryBoundary(nil, rejection: failure)
+        do { _ = try await OwnedRecoveryHarness(input, rejected).lookup(checkpoint, fileID: 7); preconditionFailure("provider/ownership failure swallowed") }
+        catch let actual as SafeFailure { check(actual == failure, "blocking failure changed") }
+        check(await rejected.searches() == 0, "account-wide error continued server requests")
+    }
     do {
-        _ = try await OwnedRecoveryHarness(input, looping).lookup(checkpoint, fileID: 7)
-        preconditionFailure("repeated server cursor not fenced")
-    } catch let failure as SafeFailure { check(failure.cause == .incompleteHistory, "cursor error lost") }
-    check(await looping.searches() == 2, "unbounded repeated server cursor")
+        _ = try await OwnedRecoveryHarness(input, OwnedRecoveryBoundary(nil, cancelled: true)).lookup(checkpoint, fileID: 7)
+        preconditionFailure("cancellation swallowed")
+    } catch is CancellationError {}
     print("PASS actual Telegram recovery: failed/local/server positives, reassigned native IDs, strict transfer paths, unknown misses and bounded cursor loops")
 }
 
@@ -197,7 +237,7 @@ func awakeEligibilityChecks() {
 }
 
 func telegramSettlementChecks(root: URL) async throws {
-    for scenario in 0...3 {
+    for scenario in 0...4 {
         let f = try await fixture(root, provider: .telegram), job = try await start(f)
         let files = try FileLeaseStore(root: root.appendingPathComponent(UUID().uuidString), ledger: f.ledger)
         let transfer = UUID(), fileID = UUID()
@@ -217,12 +257,12 @@ func telegramSettlementChecks(root: URL) async throws {
             "is_channel_post":.boolean(true), "content":.object(["@type":.string("messageDocument"),
                 "caption":.object(["text":.string(ContentIdentity.version + ":" + f.resource.tag)]),
                 "document":.object(["file_name":.string("original.heic"), "document":.object([
-                    "id":.integer(99), "size":.integer(3), "local":.object(["path":.string(scenario == 2 ? path + "-foreign" : path)]),
+                    "id":.integer(99), "size":.integer(3), "local":.object(["path":.string(scenario >= 2 && scenario != 3 ? path + "-foreign" : path)]),
                     "remote":.object(["unique_id":.string("recovered"), "is_uploading_completed":.boolean(!failed),
                         "is_uploading_active":.boolean(scenario == 3)])])])])]
         if failed { fields["sending_state"] = .object(["@type":.string("messageSendingStateFailed"),
             "error":.object(["code":.integer(400), "message":.string("Message is too old to be re-sent automatically")])]) }
-        let boundary = OwnedRecoveryBoundary(TDLibResponse(fields: fields), failed: failed)
+        let boundary = OwnedRecoveryBoundary(TDLibResponse(fields: fields), failed: failed, failedLoop: scenario == 4)
         let harness = TelegramSettlementHarness(boundary, f.ledger, files)
         try await harness.install(checkpoint)
         try await harness.run(f.destination)
@@ -243,6 +283,17 @@ func telegramSettlementChecks(root: URL) async throws {
             check(!actual.inputsTerminal && retained, "unknown/active native ownership erased")
             check(try await f.ledger.job(job.id).state != .confirmed, "unknown send fabricated Saved")
             check(try await f.ledger.snapshot().providers[1].recoveryComplete, "one protected reader blocked destination recovery")
+        }
+        if scenario == 4 {
+            let scan = try await f.ledger.beginScan()
+            let assets = try await f.ledger.registerAssets([f.asset, AssetIdentity(localIdentifier: "independent", generation: String(repeating: "d", count: 64), kind: .video)], scanID: scan)
+            try await f.ledger.completeScan(scan)
+            let resource = try ContentIdentity.resource(role: .video, originals: [OriginalContent(sha256: String(repeating: "e", count: 64), sha1: String(repeating: "f", count: 40), byteCount: 4, role: .video)])
+            let next = try await f.ledger.enqueue(assetID: assets[1].id, destinationID: f.destination.id, plan: ContentIdentity.plan(policyVersion: "boundary", resources: [resource]))
+            check(try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID())?.id == next,
+                "one incomplete outbox lookup prevented independent file claim")
+            check(await boundary.failedSearches() == 2, "failed outbox loop not bounded")
+            check(try await f.ledger.hasRetainedTransfers(jobID: job.id), "older send lost protection when next file admitted")
         }
         check(FileManager.default.fileExists(atPath: path) == retained, "input cleanup disagrees with native ownership")
     }

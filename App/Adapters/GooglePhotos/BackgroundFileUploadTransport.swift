@@ -6,7 +6,7 @@ import UIKit
 /// an OS reader dead. Result journals are small, protected and retained until the
 /// provider has checkpointed a receipt/rejection. No credential/request logging.
 final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSessionDataDelegate, @unchecked Sendable {
-    enum Inventory: Sendable { case active(Int64, Int64), completed(FileUploadResult), failed(SafeFailure), absent }
+    enum Inventory: Sendable { case active(Int64, Int64), completed(FileUploadResult), failed(SafeFailure), unavailable(SafeFailure, readerActive: Bool), absent }
     private struct Journal: Codable {
         let id: UUID
         var status: Int?
@@ -79,8 +79,11 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
     /// Must precede startup staging cleanup. getAllTasks is the OS reader inventory,
     /// not an assumption based on our in-memory dictionary or local journal alone.
     func activeTransferIDs() async throws -> Set<UUID> {
+        let known = lock.withLock { Set(tasks.keys) }
         let current = await session.allTasks
         return try lock.withLock {
+            let live = Set(current.compactMap { $0.state != .completed ? $0.taskDescription.flatMap(UUID.init(uuidString:)) : nil })
+            for id in known.subtracting(live) { tasks.removeValue(forKey: id) }
             var result: Set<UUID> = []
             for task in current where task.state != .completed {
                 guard let text = task.taskDescription, let id = UUID(uuidString: text) else { throw CoreError.recoveryRequired }
@@ -90,25 +93,40 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         }
     }
     func inventory(_ id: UUID) async throws -> Inventory {
-        try await inventories([id])[id]!
+        guard let value = try await inventories([id])[id] else { throw CoreError.recoveryRequired }
+        return value
     }
     func inventories(_ ids: Set<UUID>) async throws -> [UUID: Inventory] {
+        let known = lock.withLock { Set(tasks.keys) }
         let current = await session.allTasks
-        return try lock.withLock {
+        return lock.withLock {
             for task in current {
                 guard let text = task.taskDescription, let key = UUID(uuidString: text), task.state != .completed else { continue }
                 tasks[key] = task
             }
-            return try Dictionary(uniqueKeysWithValues: ids.map { ($0, try inventoryLocked($0, current: current)) })
+            return Dictionary(uniqueKeysWithValues: ids.map { id in
+                do { return (id, try inventoryLocked(id, current: current, newlySubmitted: !known.contains(id))) }
+                catch {
+                    let reader = current.contains { $0.state != .completed && $0.taskDescription.flatMap(UUID.init(uuidString:)) == id }
+                        || (!known.contains(id) && tasks[id] != nil)
+                    if !reader {
+                        tasks.removeValue(forKey: id)
+                        waiters.removeValue(forKey: id)?.continuation.resume(throwing: error)
+                    }
+                    return (id, .unavailable(ProviderSupport.safe(error, domain: .fileSystem), readerActive: reader))
+                }
+            })
         }
     }
-    private func inventoryLocked(_ id: UUID, current: [URLSessionTask]) throws -> Inventory {
+    private func inventoryLocked(_ id: UUID, current: [URLSessionTask], newlySubmitted: Bool) throws -> Inventory {
         if let failure = persistenceFailures[id] { throw failure }
         let journal = try read(id)
-        if let task = tasks[id], current.contains(where: { $0 === task && $0.state != .completed }) || tasks[id] != nil && journal?.terminal != true {
+        if let task = tasks[id], current.contains(where: { $0 === task && $0.state != .completed }) || (newlySubmitted && journal?.terminal != true) {
             return .active(max(0, task.countOfBytesSent), max(0, task.countOfBytesExpectedToSend))
         }
         tasks.removeValue(forKey: id)
+        waiters.removeValue(forKey: id)?.continuation.resume(throwing:
+            SafeFailure(.connectivity, domain: .urlSession, cause: .interrupted))
         guard let journal, journal.terminal else { return .absent }
         if let failure = journal.failure { return .failed(failure) }
         guard let status = journal.status, let response = HTTPURLResponse(url: URL(string: "https://photos.googleapis.com/")!, statusCode: status, httpVersion: nil, headerFields: nil) else { throw CoreError.invalidContract }
@@ -123,7 +141,7 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                     do {
                         guard !closing else { throw CoreError.invalidTransition }
                         guard request.url?.scheme == "https", request.url?.host == "photos.googleapis.com", request.url?.user == nil, request.url?.password == nil else { throw CoreError.invalidContract }
-                        if let failure = persistenceFailures.values.first { throw failure }
+                        if let failure = persistenceFailures[transferID] { throw failure }
                         guard waiters[transferID] == nil, tasks[transferID] == nil, try read(transferID) == nil else { throw CoreError.recoveryRequired }
                         let journal = Journal(id: transferID)
                         try write(journal); journals[transferID] = journal
@@ -145,7 +163,7 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
             guard !closing, continuesAfterProcessExit else { throw CoreError.invalidTransition }
             guard request.url?.scheme == "https", request.url?.host == "photos.googleapis.com",
                   request.url?.user == nil, request.url?.password == nil else { throw CoreError.invalidContract }
-            if let failure = persistenceFailures.values.first { throw failure }
+            if let failure = persistenceFailures[transferID] { throw failure }
             guard waiters[transferID] == nil, tasks[transferID] == nil, try read(transferID) == nil else { throw CoreError.recoveryRequired }
             let journal = Journal(id: transferID)
             try write(journal); journals[transferID] = journal
@@ -209,6 +227,7 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                 journal.failure = persistenceFailures[id] ?? error.map { ProviderSupport.safe($0, domain: .urlSession) }
                 if journal.failure == nil && journal.status == nil { journal.failure = SafeFailure(.transfer, domain: .urlSession, cause: .outcomeUnknown) }
                 try write(journal); journals[id] = journal
+                persistenceFailures.removeValue(forKey: id)
                 if let failure = journal.failure { return (waiter, .failure(failure)) }
                 guard let response = task.response as? HTTPURLResponse else { throw CoreError.invalidContract }
                 return (waiter, .success(FileUploadResult(data: journal.body, response: response)))
