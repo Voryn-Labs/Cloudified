@@ -166,7 +166,7 @@ public final class AppEnvironment: ObservableObject {
             pipelineValue = PhotoLibraryPipeline(ledger: led, fileStore: files, storageLayout: layout,
                 onDiagnosticFailure: { safeFallback.record($0) })
             engineValue = BackupEngine(ledger: led, files: files, onDiagnosticFailure: { safeFallback.record($0) })
-            googleValue = google; googleAdapterValue = GooglePhotosProviderAdapter(session: google, ledger: led, files: files, background: background)
+            googleValue = google; googleAdapterValue = GooglePhotosProviderAdapter(session: google, ledger: led, files: files, background: background, catalogURL: layout.rootDirectory.appendingPathComponent("google-metadata.sqlite"))
             telegramValue = telegram; telegramAdapterValue = TelegramProviderAdapter(client: telegram, ledger: led, files: files)
             // A diagnostic export failure must never remove both provider clients.
             do { exportValue = try DiagnosticExportStore(layout: layout) }

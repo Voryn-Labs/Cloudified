@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6 — 2026-10-22
+
+**Experimental prerelease. Stable installer feeds remain on 0.5.**
+
+- Add a read-only, account-scoped Google library metadata index. After an exact
+  hash miss, compare filename, capture time, dimensions and size with remote items
+  explicitly marked Original quality. Google media is not downloaded for this check.
+- Keep possible existing originals in Needs attention without claiming they are
+  saved. Other files and Telegram continue. Retry checks again; **Upload original
+  anyway** requires confirmation because it may create a duplicate.
+- Limit metadata requests, pagination, memory and disk usage. Persist page cursors
+  atomically; account switches clear the previous metadata cache and consent.
+- Fall back to existing exact-content checks when the optional metadata endpoint
+  or cache is unavailable. Actual account, rate, main-ledger and native-reader
+  safety gates remain. Diagnostics distinguish exact matches, candidates and
+  metadata availability without recording filenames or remote media identifiers.
+- Preserve the original media and existing original-quality/nonquota Pixel profile.
+  No new login, remote deletion, recompression or gallery. Initial local hashing
+  is still required; this is additional protection, not universal deduplication.
+- Publish preview IPAs separately, preserving stable latest/download/feed selection.
+
 ## 0.5 — 2026-10-22
 
 ### Upload recovery and retries

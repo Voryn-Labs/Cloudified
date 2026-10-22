@@ -220,7 +220,7 @@ extension Ledger {
     }
     /// System/network/source state changed. Unchanged exhausted jobs stay exhausted.
     public func wakeWaiting(destinationID: UUID) throws {
-        try db.execute("UPDATE jobs SET state='reconciling',retry_at=NULL WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'')!='pairingUnverified'", [destinationID.sql])
+        try db.execute("UPDATE jobs SET state='reconciling',retry_at=NULL WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'') NOT IN ('pairingUnverified','possibleOriginalMatch')", [destinationID.sql])
     }
     /// Only an explicit user Retry creates a new three-attempt cycle. All previous
     /// attempts/failures/receipts survive. Active/uncertain transports cannot reset.
@@ -264,7 +264,8 @@ extension Ledger {
     private func waitingDeadline(_ failure: SafeFailure, now: Date = Date()) -> Date? {
         // A persistent pairing mismatch needs an explicit fallback choice. Keep
         // accepted components and avoid polling the same incompatible pair.
-        if failure.cause == .pairingUnverified { return nil }
+        if failure.cause == .pairingUnverified || failure.cause == .possibleOriginalMatch { return nil }
+        if failure.cause == .googleIndexPending { return now.addingTimeInterval(15) }
         switch failure.category {
         case .diskFull: return now.addingTimeInterval(60)
         case .connectivity, .timeout, .transfer, .finalization, .reconciliation:

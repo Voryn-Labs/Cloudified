@@ -23,6 +23,13 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
+### Experimental 0.6 preview
+
+The [0.6 prerelease](https://github.com/Voryn-Labs/Cloudified/releases) adds a bounded
+Google library metadata check for possible existing originals. Likely matches wait
+for review rather than being counted as saved. Stable installer updates stay on
+**0.5**. [How preview matching works](docs/public/FAQ.md#what-changes-in-the-06-preview).
+
 ### New in 0.5
 
 Better Telegram recovery, isolated Google transfer errors, fairer retries and safer
@@ -74,6 +81,7 @@ under **Voryn Labs**, with AI-assisted architecture, development and review by
 
 Google integration: [g8row/PhotosBackup](https://github.com/g8row/PhotosBackup),
 with its [MIT notice](licenses/LICENSE-PhotosBackup.txt) preserved.
+Read-only Google metadata adaptation: [xob0t/gpmc](https://github.com/xob0t/gpmc).
 Telegram transport: [TDLib](https://github.com/tdlib/td).
 Implementation inspiration: [xob0t/gotohp](https://github.com/xob0t/gotohp),
 a reference rather than a linked dependency. [Pinned sources and notices](THIRD_PARTY_NOTICES.md).

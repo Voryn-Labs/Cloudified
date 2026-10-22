@@ -54,7 +54,7 @@ def app_info(ipa: Path) -> dict:
     return info
 
 
-def source_version(head_sha: str) -> str:
+def source_app_info(head_sha: str) -> dict:
     # The publisher may run after main has advanced. Validate against the built
     # revision, never a hard-coded version or the publisher's current checkout.
     source = json.loads(run(
@@ -63,6 +63,11 @@ def source_version(head_sha: str) -> str:
     if source.get("encoding") != "base64":
         raise ValueError("Source version metadata has an unexpected encoding")
     info = plistlib.loads(base64.b64decode("".join(source["content"].split()), validate=True))
+    return info
+
+
+def source_version(head_sha: str) -> str:
+    info = source_app_info(head_sha)
     version = info.get("CFBundleShortVersionString")
     if not isinstance(version, str) or re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version) is None:
         raise ValueError("Source short version must use the user's major.minor convention")
@@ -105,6 +110,9 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
             or info.get("CloudifiedRevision") != args.head_sha):
         raise ValueError("IPA identity, version, build number, or source revision differs from the completed run")
 
+    channel = source_app_info(args.head_sha).get("CloudifiedReleaseChannel", "stable")
+    if channel not in ("stable", "prerelease") or info.get("CloudifiedReleaseChannel", "stable") != channel:
+        raise ValueError("IPA release channel differs from its built source")
     notes = source_release_notes(args.head_sha, version)
     tag = release_tag(args.run_id)
     stage_url = f"https://github.com/{APP_REPO}/releases/download/{tag}/{IPA_NAME}"
@@ -122,11 +130,12 @@ def stage_success(args: argparse.Namespace, manifest: dict) -> None:
         run(
             "gh", "release", "create", tag, *attachments,
             "--repo", APP_REPO, "--target", args.head_sha,
-            "--title", f"Cloudified {version}",
+            "--title", f"Cloudified {version}" + (" Preview" if channel == "prerelease" else ""),
             "--notes", f"{notes}\n\n---\n\nVersion {version} · Build {build} · iOS 26+\n\n[Install and set up](https://github.com/{APP_REPO}/blob/main/docs/public/SETUP.md) · [Full changelog](https://github.com/{APP_REPO}/blob/main/docs/public/CHANGELOG.md)\n\nBuild provenance: {manifest['runURL']}",
             "--prerelease",
         )
     manifest.update({
+        "channel": channel,
         "version": version,
         "buildVersion": build,
         "bundleIdentifier": BUNDLE_ID,

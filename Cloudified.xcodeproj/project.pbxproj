@@ -58,6 +58,8 @@
 		C7D39F78BD260E9BF05217D6 /* GooglePhotosAdapterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C6864CFD3D4BBC0C024FA7 /* GooglePhotosAdapterProtocol.swift */; };
 		DF659A1631F2214B6D4E7791 /* Protobuf.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4570CF8817F826B1EE4E53E /* Protobuf.swift */; };
 		74E785D97A9B6818BB33D95B /* GPMCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7347B422AF74502D4A4B0F /* GPMCClient.swift */; };
+		E4E530DFAE3BE17B31F4F553 /* GoogleLibraryWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = E95B2916078F2FDBC3036DDF /* GoogleLibraryWire.swift */; };
+		749739B94745365112FE2CB8 /* GoogleLibraryMatching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C33A7940FC50277035D9436 /* GoogleLibraryMatching.swift */; };
 		E53A06505235EC6905241EFC /* GoogleTokenExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22EB72E5810D593DAD04B52A /* GoogleTokenExchange.swift */; };
 		CEB6BEC7B77635B941E814DC /* GooglePhotosClientSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19830C8C975235DDEBC2E337 /* GooglePhotosClientSession.swift */; };
 		2FE2FCF26487D84A71E5266A /* ForegroundFileUploadTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E9B88880154AE04551E9283 /* ForegroundFileUploadTransport.swift */; };
@@ -145,6 +147,8 @@
 		27C6864CFD3D4BBC0C024FA7 /* GooglePhotosAdapterProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooglePhotosAdapterProtocol.swift"; sourceTree = "<group>"; };
 		D4570CF8817F826B1EE4E53E /* Protobuf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Protobuf.swift"; sourceTree = "<group>"; };
 		9B7347B422AF74502D4A4B0F /* GPMCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GPMCClient.swift"; sourceTree = "<group>"; };
+		E95B2916078F2FDBC3036DDF /* GoogleLibraryWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GoogleLibraryWire.swift"; sourceTree = "<group>"; };
+		6C33A7940FC50277035D9436 /* GoogleLibraryMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GoogleLibraryMatching.swift"; sourceTree = "<group>"; };
 		22EB72E5810D593DAD04B52A /* GoogleTokenExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GoogleTokenExchange.swift"; sourceTree = "<group>"; };
 		19830C8C975235DDEBC2E337 /* GooglePhotosClientSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooglePhotosClientSession.swift"; sourceTree = "<group>"; };
 		9E9B88880154AE04551E9283 /* ForegroundFileUploadTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ForegroundFileUploadTransport.swift"; sourceTree = "<group>"; };
@@ -327,6 +331,8 @@
 				27C6864CFD3D4BBC0C024FA7 /* GooglePhotosAdapterProtocol.swift */,
 				D4570CF8817F826B1EE4E53E /* Protobuf.swift */,
 				9B7347B422AF74502D4A4B0F /* GPMCClient.swift */,
+				E95B2916078F2FDBC3036DDF /* GoogleLibraryWire.swift */,
+				6C33A7940FC50277035D9436 /* GoogleLibraryMatching.swift */,
 				22EB72E5810D593DAD04B52A /* GoogleTokenExchange.swift */,
 				19830C8C975235DDEBC2E337 /* GooglePhotosClientSession.swift */,
 				9E9B88880154AE04551E9283 /* ForegroundFileUploadTransport.swift */,
@@ -521,6 +527,8 @@
 				C7D39F78BD260E9BF05217D6 /* GooglePhotosAdapterProtocol.swift in Sources */,
 				DF659A1631F2214B6D4E7791 /* Protobuf.swift in Sources */,
 				74E785D97A9B6818BB33D95B /* GPMCClient.swift in Sources */,
+				E4E530DFAE3BE17B31F4F553 /* GoogleLibraryWire.swift in Sources */,
+				749739B94745365112FE2CB8 /* GoogleLibraryMatching.swift in Sources */,
 				E53A06505235EC6905241EFC /* GoogleTokenExchange.swift in Sources */,
 				CEB6BEC7B77635B941E814DC /* GooglePhotosClientSession.swift in Sources */,
 				2FE2FCF26487D84A71E5266A /* ForegroundFileUploadTransport.swift in Sources */,
@@ -699,7 +707,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.5;
+				MARKETING_VERSION = 0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -738,7 +746,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.5;
+				MARKETING_VERSION = 0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

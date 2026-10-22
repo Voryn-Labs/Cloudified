@@ -419,12 +419,12 @@ actor GPMCClient {
         return .other
     }
 
-    private func request(_ url: URL, method: String = "POST", body: Data? = nil, headers: [String: String] = [:], operation: String = "request", allowReauth: Bool = true, photosProtocolHeaders: Bool = true) async throws -> (Data, HTTPURLResponse) {
+    private func request(_ url: URL, method: String = "POST", body: Data? = nil, headers: [String: String] = [:], operation: String = "request", allowReauth: Bool = true, photosProtocolHeaders: Bool = true, timeout: TimeInterval = 120) async throws -> (Data, HTTPURLResponse) {
         if expiry <= Date().addingTimeInterval(30) { try await authenticate() }
         // Renewed Photos credentials must be identity-verified before any RPC.
         // JSON identity calls opt out, so this cannot recurse into itself.
         if photosProtocolHeaders { _ = try await verifiedSubject() }
-        var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 120
+        var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = timeout
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if photosProtocolHeaders {
             request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
@@ -440,7 +440,7 @@ actor GPMCClient {
         if allowReauth, let http = result.1 as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
             expiry = .distantPast
             return try await self.request(url, method: method, body: body, headers: headers, operation: operation,
-                                          allowReauth: false, photosProtocolHeaders: photosProtocolHeaders)
+                                          allowReauth: false, photosProtocolHeaders: photosProtocolHeaders, timeout: timeout)
         }
         return try checked(result.0, result.1, operation: operation)
     }
@@ -515,6 +515,13 @@ actor GPMCClient {
             }
         }
         return (Data(hasher.finalize()), size)
+    }
+
+    func libraryPage(cursor: GoogleLibraryCursor, subject: String) async throws -> GoogleLibraryPage {
+        let body = try GoogleLibraryWire.request(cursor, subject: subject)
+        let response = try await request(URL(string: "https://photosdata-pa.googleapis.com/6439526531001121323/18047484249733410717")!,
+            body: body, headers: Self.extHeaders, operation: "library metadata", timeout: 12)
+        return try GoogleLibraryWire.page(response.0)
     }
 
     func remoteMediaKey(sha1 hash: Data, asLivePhotoMotion: Bool = false) async throws -> String? {

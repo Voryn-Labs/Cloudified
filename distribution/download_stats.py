@@ -42,13 +42,17 @@ def collect(items):
             'tag': release['tag_name'],
             'name': release['name'],
             'publishedAt': release['published_at'],
+            'prerelease': release.get('prerelease', False),
             'assetID': assets[0]['id'],
             'downloads': count,
         })
     if not rows:
         raise ValueError('No public IPA release found; keeping previous statistics')
     rows.sort(key=lambda row: (row['publishedAt'], row['assetID']), reverse=True)
-    return {'repository': REPO, 'asset': IPA, 'latest': rows[0],
+    stable = [row for row in rows if not row['prerelease']]
+    if not stable:
+        raise ValueError('No stable IPA release found; keeping previous statistics')
+    return {'repository': REPO, 'asset': IPA, 'latest': stable[0],
             'total': sum(row['downloads'] for row in rows), 'releases': rows}
 
 

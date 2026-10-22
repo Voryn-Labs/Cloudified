@@ -17,14 +17,18 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
         // conservatively treated as uploaded, never as proof of rejection.
         var didUpload: Bool?
     }
-    private let session: GooglePhotosClientSession
-    private let ledger: Ledger
+    let session: GooglePhotosClientSession
+    let ledger: Ledger
     private let files: FileLeaseStore
     private let background: BackgroundFileUploadTransport?
     private var destination: Destination?
     private var busy = false
-    init(session: GooglePhotosClientSession, ledger: Ledger, files: FileLeaseStore, background: BackgroundFileUploadTransport? = nil) {
-        self.session = session; self.ledger = ledger; self.files = files; self.background = background
+    let catalogURL: URL?
+    var catalog: GoogleRemoteIndex?
+    var catalogRetry = Date.distantPast
+    var catalogScope: String?
+    init(session: GooglePhotosClientSession, ledger: Ledger, files: FileLeaseStore, background: BackgroundFileUploadTransport? = nil, catalogURL: URL? = nil) {
+        self.session = session; self.ledger = ledger; self.files = files; self.background = background; self.catalogURL = catalogURL
     }
     var canAcceptWork: Bool {
         get async {
@@ -109,7 +113,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
     private func verifiedScope() async throws -> Data {
         try ProviderSupport.canonical(Scope(version: 1, subject: await session.verifiedSubject()))
     }
-    private func verify(_ requested: Destination) async throws {
+    func verify(_ requested: Destination) async throws {
         guard requested.provider == .google else { throw CoreError.staleMapping }
         let scope = try await verifiedScope()
         guard ProviderSupport.fingerprint(scope) == requested.verifiedFingerprint,
@@ -274,6 +278,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
             }
             let keys = try await remoteKeys(resource)
             if let keys {
+                await libraryEvent(.googleHashMatch, requested)
                 let previous = try checkpoint.map { try decoded($0, resource: resource) }
                 let knownUpload = previous.map { $0.didUpload ?? $0.mediaKeys.contains(where: { $0 != nil }) } ?? false
                 let receipt = try makeReceipt(requested, resource, keys, kind: knownUpload ? .uploaded : .alreadyPresent)
@@ -283,6 +288,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                 }
                 return .present(receipt)
             }
+            var acceptedOriginals = Set<String>()
             if let checkpoint {
                 var state = try decoded(checkpoint, resource: resource)
                 switch checkpoint.phase {
@@ -310,9 +316,12 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                 if state.mediaKeys.allSatisfy({ $0 != nil }) {
                     return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .pairingUnverified))
                 }
+                acceptedOriginals = Set(zip(resource.originals, state.mediaKeys).compactMap { $0.1 == nil ? nil : $0.0.sha256 })
                 let phase: ProviderCheckpointPhase = state.mediaKeys.contains(where: { $0 != nil }) ? .partial : .rejected
                 try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, phase, state)
             }
+            if let failure = try await checkLibraryCandidate(requested, resource: resource, acceptedOriginals: acceptedOriginals) { return .unknown(failure) }
+            await libraryEvent(.googleHashMiss, requested)
             return .verifiedAbsent
         } catch { return presenceFailure(error) }
     }

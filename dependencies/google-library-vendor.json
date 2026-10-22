@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/xob0t/gpmc.git",
+  "sourceCommit": "94b1b267ca6819da542d4330a7dd216747eb0437",
+  "licensePath": "licenses/gpmc/LICENSE.txt",
+  "licenseSha256": "a477cba1ae1b4779086f7f7122b87cabb86f13c66cdfbe2050d2352a7bba6db9",
+  "files": [
+    {
+      "sourcePath": "gpmc/api.py",
+      "sourceSha256": "1d4195f9696f558258ea0eeaea4dff74fce17de81c4c68815bea422c18198d36",
+      "vendoredPath": "App/Adapters/GooglePhotos/GoogleLibraryWire.swift",
+      "vendoredSha256": "4fb8c1001a8414f58c745385b9ff400a70d77a310b8956c5bbc49f224bcbca01"
+    }
+  ],
+  "additionalSourceDigests": {
+    "gpmc/message_types.py": "808bfb732cc8d9df1c077322f68ee330afa676ebb3277d083e9f3e676123c3a1",
+    "gpmc/db_update_parser.py": "19629e3f73d0488e0c8b5191155c1c5fe54547565e271d56f0be333af4c8f307"
+  },
+  "patchNotes": "Read-only library metadata wire templates/parser adapted from exact gpmc revision. Remove captured account field, inject verified subject and bounded cursors; retain mobile capabilities. Strict bounded typed parsing, explicit unknown quality, no filename-only Saved receipts. No media downloads, remote mutations or new login. Does not alter existing PhotosBackup upload or TDLib pins."
+}

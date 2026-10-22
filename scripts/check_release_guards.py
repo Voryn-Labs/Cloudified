@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -71,20 +73,43 @@ def main():
         temp = Path(temp)
         deps = temp / 'deps'
         (deps / 'dependencies').mkdir(parents=True)
-        for name in ['pins.json', 'google-vendor.json', 'tdlib-vendor.json']:
+        for name in ['pins.json', 'google-vendor.json', 'tdlib-vendor.json', 'google-library-vendor.json']:
             shutil.copy(ROOT / 'dependencies' / name, deps / 'dependencies' / name)
         (deps / 'scripts').mkdir()
         shutil.copy(ROOT / 'scripts/assemble_tdlib.sh', deps / 'scripts/assemble_tdlib.sh')
         shutil.copytree(ROOT / 'licenses', deps / 'licenses')
-        for name in ['google', 'tdlib']:
+        for name in ['google', 'tdlib', 'google-library']:
             manifest = json.loads((deps / f'dependencies/{name}-vendor.json').read_text())
             for item in manifest['files']:
                 target = deps / item['vendoredPath']
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(ROOT / item['vendoredPath'], target)
-        assert verify(deps) == 9
+        assert verify(deps) == 10
         (deps / 'App/Adapters/GooglePhotos/GPMCClient.swift').write_text('changed')
         rejects(lambda: verify(deps))
+        sys.path.insert(0, str(ROOT / 'distribution'))
+        preview = load('update_source_preview', ROOT / 'distribution/update_source.py')
+        preview_root = temp / 'preview'; preview_root.mkdir()
+        feed = preview_root / 'source.json'; feed.write_text('stable feed must remain byte-identical')
+        manifest = preview_root / 'manifest.json'
+        manifest.write_text(json.dumps({'channel': 'prerelease', 'stageTag': 'preview-build'}))
+        calls = []
+        with patch.object(preview, 'ROOT', preview_root), patch.object(preview, 'verify', return_value={}), \
+                patch.object(preview, 'run', side_effect=lambda *args: calls.append(args)), \
+                patch.object(sys, 'argv', ['update_source.py', '--manifest', str(manifest), '--artifact-dir', str(temp)]):
+            preview.main()
+        with patch.object(preview, 'ROOT', preview_root), patch.object(preview, 'verify', return_value={}), \
+                patch.object(preview, 'run', side_effect=lambda *args: calls.append(args)), \
+                patch.object(sys, 'argv', ['update_source.py', '--manifest', str(manifest), '--artifact-dir', str(temp), '--promote']):
+            preview.main()
+        assert feed.read_text() == 'stable feed must remain byte-identical'
+        assert len(calls) == 1 and calls[0][-2:] == ('--prerelease=true', '--latest=false')
+        stats = load('download_stats_preview', ROOT / 'distribution/download_stats.py')
+        releases = [{'tag_name': name, 'name': name, 'published_at': date, 'prerelease': prerelease,
+                     'assets': [{'name': stats.IPA, 'id': number, 'download_count': number}]}
+                    for name, date, prerelease, number in [('stable', '2026-10-21', False, 2), ('preview', '2026-10-22', True, 3)]]
+        snapshot = stats.collect(releases)
+        assert snapshot['latest']['tag'] == 'stable' and snapshot['total'] == 5
         repo = temp / 'tree'; setup(repo)
         revision = commit(repo, 'App/source.swift', 'source')
         verify_tree(repo, revision, lambda p: p.startswith('App/'))
@@ -115,7 +140,7 @@ def main():
         rejects(lambda: publisher.push(writer))
         assert git(peer, 'show', 'origin/main:source.json') == 'remote feed'
         assert not (writer / '.git/rebase-merge').exists()
-    print('PASS offline guards: dependency drift, URL variants, secret/file checks, stale-base rebase and safe conflict rejection')
+    print('PASS offline guards: dependency drift, URL variants, secret/file checks, stable/preview separation, counter selection, stale-base rebase and safe conflict rejection')
 
 
 if __name__ == '__main__':

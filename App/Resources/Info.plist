@@ -17,7 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.5</string>
+	<string>0.6</string>
+	<key>CloudifiedReleaseChannel</key>
+	<string>prerelease</string>
 	<key>CloudifiedRevision</key>
 	<string>$(CLOUDIFIED_REVISION)</string>
 	<key>CFBundleVersion</key>

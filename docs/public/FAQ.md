@@ -54,6 +54,36 @@ without uploading its bytes. A large remaining number is not proof of duplicate
 uploads. Compressed, edited or otherwise different copies may not match; Cloudified
 does not skip an original based only on a similar filename or appearance.
 
+## What changes in the 0.6 preview?
+
+After an exact hash miss, Cloudified can also consult Google's read-only library
+metadata using the account you already linked. A possible existing Original
+quality copy must agree on filename, capture time, dimensions and approximate
+size. Such a match is **not proof of identical bytes**: it waits in Needs attention
+and does not increase Saved. Open that item for identifying details and Retry,
+or confirm **Upload original anyway** if you accept the risk of a duplicate.
+Other files and Telegram can continue.
+
+Google's media bytes are not downloaded for this metadata check. Cloudified still
+reads the iPhone original for its exact hash and normal upload preparation. An
+original available only through iOS Photos may need fetching by PhotoKit. This
+preview does not provide universal instant checking of an existing library.
+
+The optional index is scoped to one Google account, capped at 100,000 metadata
+rows and 16 MiB of encoded row payload, with a 32 MiB SQLite main-file limit and
+bounded journal overhead. Each check reads at most two pages, with a 12-second
+request timeout. Partial sync resumes later; matching never treats incomplete
+coverage or a filename alone as Saved. Metadata older than a day is ignored for
+candidate decisions. If the private endpoint or cache is unavailable, Cloudified
+uses the existing exact-content path and records a diagnostic warning. Edited
+copies, renamed items, missing quality or metadata and unsupported library layouts
+can still evade the additional check. A Storage Saver-only candidate is not held
+as an existing original; Google still determines how an upload is stored.
+
+The preview is an explicit download from GitHub Releases. Stable installer feeds
+and the website's regular Download button stay on 0.5. Keep your signing identity
+and container when updating; the metadata database is separate from upload receipts.
+
 ## Can one failed file stop every upload?
 
 An ordinary item failure is recorded and later eligible files can proceed. A
@@ -196,7 +226,7 @@ background launch or security isolation. Settings → About shows the runtime.
 
 Yes. Its original code is [MIT licensed](../../LICENSE): preserve the copyright
 and license notice. Upstream components retain their own notices. Credits and
-acknowledgements are on [GitHub](../../README.md#credits); there is no credits screen.
+acknowledgements are on [GitHub](../../README.md#license-and-credits); there is no credits screen.
 
 ## What does the first-launch walkthrough cover?
 

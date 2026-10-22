@@ -181,6 +181,7 @@ public struct NotUploadedDetailSheet: View {
     public let item: NotUploadedItem
     @ObservedObject var environment: AppEnvironment
     @ObservedObject private var presentation: ScreenStateStore<SettingsViewState>
+    @State private var confirmOriginalUpload = false
     @State private var history: [AttemptHistoryRow] = []
     @State private var historyError: String?
     @State private var historyHasOlder = false
@@ -219,6 +220,16 @@ public struct NotUploadedDetailSheet: View {
                     if let remedy = item.suggestedRemedy { Text(remedy).font(.subheadline).foregroundStyle(.secondary) }
                     if let date = item.nextRetryDate {
                         LabeledContent("Next retry", value: date.formatted(.relative(presentation: .named)))
+                    }
+                    if item.technicalCode?.hasSuffix("/possibleOriginalMatch") == true, item.canRetry {
+                        Button("Upload original anyway", systemImage: "arrow.up.doc") { confirmOriginalUpload = true }
+                            .disabled(!presentation.value.controlsAvailable)
+                            .confirmationDialog("Upload this original?", isPresented: $confirmOriginalUpload, titleVisibility: .visible) {
+                                Button("Upload original anyway") { environment.retryItem(item, allowExistingOriginal: true) }
+                                Button("Cancel", role: .cancel) {}
+                            } message: {
+                                Text("Google may already have this original. Continuing can create another copy. Only this file's candidate warning is overridden; upload recovery checks still apply.")
+                            }
                     }
                     if item.canRetry || item.needsRecovery {
                         Button {

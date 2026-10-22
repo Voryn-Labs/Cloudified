@@ -43,7 +43,7 @@ extension AppEnvironment {
                     let recover = retained || row.job.state == .reconciling || FailureExplanation.requiresReconciliation(row.failure)
                     items.append(NotUploadedItem(id: row.asset.id.uuidString + row.job.destination.id.uuidString,
                         destinationID: row.job.destination.id,
-                        canRetry: !recover && (row.job.state == .failed || row.failure?.cause == .pairingUnverified), needsRecovery: recover,
+                        canRetry: !recover && (row.job.state == .failed || row.failure?.cause == .pairingUnverified || row.failure?.cause == .possibleOriginalMatch), needsRecovery: recover,
                         jobID: row.job.id, localIdentifier: row.asset.localIdentifier,
                         filename: source?.resources.first?.originalFilename ?? "Original media (name unavailable)",
                         captureDate: source?.metadata.creationDate, mediaType: row.asset.kind == .photo ? "Photo" : "Video",

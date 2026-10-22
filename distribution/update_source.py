@@ -15,6 +15,7 @@ def verify(manifest, artifact_dir):
     run_id = manifest.get('runId')
     if (manifest.get('schema') != 1 or type(run_id) is not int
             or manifest.get('status') != 'success'
+            or manifest.get('channel', 'stable') not in ('stable', 'prerelease')
             or manifest.get('bundleIdentifier') != BUNDLE_ID
             or manifest.get('runURL') != f'https://github.com/{APP_REPO}/actions/runs/{run_id}'
             or manifest.get('stageTag') != release_tag(run_id)
@@ -32,7 +33,8 @@ def verify(manifest, artifact_dir):
             or info.get('CFBundleIdentifier') != BUNDLE_ID
             or str(info.get('CFBundleShortVersionString')) != manifest['version']
             or str(info.get('CFBundleVersion')) != manifest['buildVersion']
-            or info.get('CloudifiedRevision') != manifest['headSha']):
+            or info.get('CloudifiedRevision') != manifest['headSha']
+            or info.get('CloudifiedReleaseChannel', 'stable') != manifest.get('channel', 'stable')):
         raise ValueError('Artifact differs from the verified build manifest')
     release = json.loads(run('gh', 'api', f'repos/{APP_REPO}/releases/tags/{release_tag(run_id)}').stdout)
     assets = [asset for asset in release['assets'] if asset['name'] == IPA_NAME]
@@ -80,6 +82,12 @@ def main():
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     release = verify(manifest, args.artifact_dir)
+    if manifest.get('channel', 'stable') == 'prerelease':
+        if args.promote:
+            run('gh', 'release', 'edit', manifest['stageTag'], '--repo', APP_REPO,
+                '--prerelease=true', '--latest=false')
+        print('Prerelease verified; stable installer feed and latest release are preserved.')
+        return
     path = ROOT / 'source.json'
     source = json.loads(path.read_text())
     latest = update(source, manifest, release)

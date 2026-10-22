@@ -320,7 +320,7 @@ extension AppEnvironment {
             cursor = page.last?.destination.id
         }
     }
-    public func retryItem(_ item: NotUploadedItem) {
+    public func retryItem(_ item: NotUploadedItem, allowExistingOriginal: Bool = false) {
         guard item.canRetry, commandProvider == nil else { return }
         Task { [weak self] in
             guard let self, let ledger = self.ledger else { return }
@@ -330,7 +330,13 @@ extension AppEnvironment {
                 let enabled = try await self.beginProviderChange(provider, token: token, requiresReleasedInputs: false)
                 defer { self.endProviderChange(token) }
                 guard let destination = try await ledger.selectedDestination(provider), destination.id == item.destinationID else { throw CoreError.staleMapping }
-                if let jobID = item.jobID { try await ledger.explicitRetry(jobID: jobID) }
+                if let jobID = item.jobID {
+                    if allowExistingOriginal {
+                        guard provider == .google, let adapter = self.googleAdapter else { throw CoreError.invalidTransition }
+                        try await adapter.allowOriginal(jobID: jobID, destination: destination)
+                    }
+                    try await ledger.explicitRetry(jobID: jobID)
+                }
                 else if let asset = item.sourceAsset {
                     if let job = try await ledger.aliasedJob(assetID: asset.id, destinationID: destination.id), try await ledger.hasRetainedTransfers(jobID: job.id) {
                         throw SafeFailure(.reconciliation, domain: provider == .google ? .google : .tdlib, cause: .outcomeUnknown)

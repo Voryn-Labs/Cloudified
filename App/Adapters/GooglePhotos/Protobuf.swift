@@ -93,7 +93,8 @@ enum Proto {
             guard let next = try fields(current)[field]?.first else { return nil }
             current = next
         }
-        guard let value = String(data: current, encoding: .utf8), !value.isEmpty else { return nil }
+        guard let value = String(data: current, encoding: .utf8) else { throw Failure.malformed }
+        guard !value.isEmpty else { return nil }
         return value
     }
 }

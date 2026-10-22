@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def verify(root=ROOT):
     pins = json.loads((root / 'dependencies/pins.json').read_text())
     checked = 0
-    for name, pin in [('google', pins['photosBackup']), ('tdlib', pins['tdlib'])]:
+    library = json.loads((root / 'dependencies/google-library-vendor.json').read_text())
+    for name, pin in [('google', pins['photosBackup']), ('tdlib', pins['tdlib']),
+                      ('google-library', {'repository': library['sourceRepository'], 'commit': library['sourceCommit']})]:
         manifest = json.loads((root / f'dependencies/{name}-vendor.json').read_text())
         if manifest['sourceRepository'] != pin['repository'] or manifest['sourceCommit'] != pin['commit']:
             raise ValueError(f'{name}: source pin and provenance disagree')
@@ -28,6 +30,8 @@ def verify(root=ROOT):
             if actual != entry['vendoredSha256']:
                 raise ValueError(f'Reviewed dependency digest mismatch: {entry["vendoredPath"]}')
             checked += 1
+    if hashlib.sha256((root / library['licensePath']).read_bytes()).hexdigest() != library['licenseSha256']:
+        raise ValueError('Mobile library reference license differs')
     td = json.loads((root / 'dependencies/tdlib-vendor.json').read_text())
     closure = (root / 'scripts/assemble_tdlib.sh').read_text()
     for symbol, commit in [('PIN_COMMIT', pins['tdlib']['commit']),

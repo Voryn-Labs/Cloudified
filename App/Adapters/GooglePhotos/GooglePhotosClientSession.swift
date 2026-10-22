@@ -129,6 +129,11 @@ actor GooglePhotosClientSession {
         try await traced(.googleReadAccess) { try await self.requireClient().validateReadAccess() }
     }
 
+    func libraryPage(cursor: GoogleLibraryCursor, subject: String) async throws -> GoogleLibraryPage {
+        do { return try await traced(.googleLibrarySync) { try await self.requireClient().libraryPage(cursor: cursor, subject: subject) } }
+        catch let error as GPMCError { throw SafeProviderFailure(failure: Self.classify(error), retryAfter: error.retryAfter) }
+    }
+
     /// Checks remote presence by SHA-1 hash without uploading.
     func checkPresence(sha1: Data, asLivePhotoMotion: Bool = false) async throws -> String? {
         let client = try requireClient()

@@ -58,8 +58,12 @@ fi
 mkdir -p "$app_path/ThirdPartyLicenses"
 cp "$repo_root/LICENSE" "$app_path/LICENSE.txt"
 cp "$repo_root/THIRD_PARTY_NOTICES.md" "$app_path/ThirdPartyLicenses/THIRD_PARTY_NOTICES.txt"
-for notice in "$repo_root"/licenses/LICENSE-* "$output_root"/tdlib/licenses/NOTICE*; do
-  if [[ -f "$notice" ]]; then cp "$notice" "$app_path/ThirdPartyLicenses/"; fi
+for notice in "$repo_root"/licenses/LICENSE-* "$repo_root"/licenses/gpmc/LICENSE.txt "$output_root"/tdlib/licenses/NOTICE*; do
+  if [[ -f "$notice" ]]; then
+    notice_name="$(basename "$notice")"
+    if [[ "$notice" == */gpmc/LICENSE.txt ]]; then notice_name="LICENSE-gpmc.txt"; fi
+    cp "$notice" "$app_path/ThirdPartyLicenses/$notice_name"
+  fi
 done
 mkdir -p "$output_root/IPA/Payload"
 ditto "$app_path" "$output_root/IPA/Payload/Cloudified.app"

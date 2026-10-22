@@ -7,6 +7,7 @@ Cloudified uses small integration boundaries rather than tracking moving branche
 | Dependency | Boundary | Source of truth |
 | --- | --- | --- |
 | PhotosBackup | Adapted Google client/authentication files behind GooglePhotosClientSession | [pins](../../dependencies/pins.json), [file provenance](../../dependencies/google-vendor.json) |
+| gpmc | Read-only library wire adaptation; no Python runtime | [exact metadata provenance](../../dependencies/google-library-vendor.json), [MIT notice](../../licenses/gpmc/LICENSE.txt) |
 | TDLib | Packages/CTDLib C module, Swift bridge and session | [pins](../../dependencies/pins.json), [native provenance](../../dependencies/tdlib-vendor.json) |
 | OpenSSL | TDLib's pinned native build closure | pins.json, tdlib-vendor.json and scripts/assemble_tdlib.sh |
 
@@ -65,3 +66,9 @@ be reviewed against source history before deliberately updating the manifest's
 `vendoredSha256`; do not regenerate digests just to silence a failure. This also
 checks source pins against native assembly and embedded license provenance.
 It does not fetch or advance an upstream revision.
+
+The 0.6 metadata adaptation is pinned separately to gpmc
+`94b1b267ca6819da542d4330a7dd216747eb0437`. It does not advance PhotosBackup or
+TDLib. Review this wire/parser manually against its manifest; the existing review
+helper does not yet prepare gpmc merges. Captured account and promotion cursor
+fields are removed; runtime identity and sync cursors come from the linked account.

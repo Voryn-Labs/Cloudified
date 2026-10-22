@@ -17,6 +17,7 @@ public enum FailureCategory: String, Codable, Sendable {
 }
 public enum ErrorDomain: String, Codable, Sendable { case photos, fileSystem, urlSession, google, tdlib, sqlite, core }
 public enum KnownCause: String, Codable, Sendable {
+    case possibleOriginalMatch, googleIndexPending
     case unknown, permissionDenied, sourceMissing, insufficientSpace, formatRejected, offline
     case deadlineExceeded, serverRateLimit, loginRequired, quotaExceeded, providerRejected
     case incompleteHistory, outcomeUnknown, interrupted, disabled, paused, contentChanged
@@ -37,6 +38,7 @@ public enum DiagnosticStage: String, Codable, Sendable {
     case diagnosticExport, diagnosticUpload, backgroundContinuation, automaticBackground
     case googleTransferActive, googleTransferCompleted, googleTransferAbsent, googleTransferFailed, googleTransferQueued
     case applicationOperation
+    case googleLibrarySync, googleLibraryUnavailable, googleOriginalCandidate, googleHashMatch, googleHashMiss
     case googleDuplicateCheck, googleUploadPreparation, googleFileTransfer, googleCommit
     case telegramCensus, telegramRecovery, telegramProtocol, telegramLocalReset, originalIntegrityCheck, startupInventory
 }

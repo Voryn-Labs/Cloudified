@@ -22,3 +22,11 @@ implementation reference. Reviewed reference revision:
 [`97a5dc02db81f5571ce6b586f478600fcd44dd89`](https://github.com/xob0t/gotohp/tree/97a5dc02db81f5571ce6b586f478600fcd44dd89).
 No gotohp source is currently copied into or linked by Cloudified; it is not a
 runtime dependency. PhotosBackup remains the pinned Google implementation base.
+
+## gpmc mobile library metadata reference
+
+Read-only request capabilities and metadata parsing are adapted from
+[xob0t/gpmc](https://github.com/xob0t/gpmc) at
+`94b1b267ca6819da542d4330a7dd216747eb0437`, copyright 2024 xob0t, MIT.
+[License](licenses/gpmc/LICENSE.txt). No Python runtime is bundled.
+Provenance: [metadata source manifest](dependencies/google-library-vendor.json).

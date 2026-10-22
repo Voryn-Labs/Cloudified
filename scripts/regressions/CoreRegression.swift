@@ -47,6 +47,7 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try await googleRemoteIndexChecks(root: root)
         try await secondPassChecks(root: root)
         let limited = try await fixture(root, provider: .telegram)
         let delay = Date().addingTimeInterval(120)
