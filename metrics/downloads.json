@@ -6,16 +6,16 @@
     "name": "Cloudified 0.4",
     "publishedAt": "2026-10-21T15:42:47Z",
     "assetID": 662981533,
-    "downloads": 4
+    "downloads": 6
   },
-  "total": 36,
+  "total": 38,
   "releases": [
     {
       "tag": "build-39627332114",
       "name": "Cloudified 0.4",
       "publishedAt": "2026-10-21T15:42:47Z",
       "assetID": 662981533,
-      "downloads": 4
+      "downloads": 6
     },
     {
       "tag": "build-39311792832",
@@ -39,5 +39,5 @@
       "downloads": 20
     }
   ],
-  "collectedAt": "2026-10-21T21:48:00+00:00"
+  "collectedAt": "2026-10-22T04:58:39+00:00"
 }
