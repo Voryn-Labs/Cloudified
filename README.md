@@ -25,7 +25,7 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 
 ### Experimental 0.6 preview
 
-The [0.6 prerelease](https://github.com/Voryn-Labs/Cloudified/releases) adds a bounded
+The [0.6 prerelease](https://github.com/Voryn-Labs/Cloudified/releases/tag/build-39800988344) adds a bounded
 Google library metadata check for possible existing originals. Likely matches wait
 for review rather than being counted as saved. Stable installer updates stay on
 **0.5**. [How preview matching works](docs/public/FAQ.md#what-changes-in-the-06-preview).
