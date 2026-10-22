@@ -4,7 +4,7 @@
 
 ## Install Cloudified
 
-Cloudified 0.5 uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
+Cloudified uses **com.vorynlabs.cloudified** and requires **iOS 26+**.
 Import the unsigned IPA into Feather, SideStore, AltStore or another compatible
 signer and use your own signing setup. Source readers display **Voryn Labs**:
 

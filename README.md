@@ -6,7 +6,7 @@
 
 Back up iPhone photos and videos to **Google Photos, Telegram, or both**.
 Open source, original quality, and a separate upload queue for each destination.
-By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
+By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Latest release: 0.4**
 
 [Download IPA](https://github.com/Voryn-Labs/Cloudified/releases/latest/download/Cloudified-unsigned.ipa) · [Website](https://voryn-labs.github.io/cloudified.html) · [Setup](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md)
 
@@ -23,9 +23,10 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
-### New in 0.5
+### Coming in 0.5
 
-Better Telegram recovery, isolated Google transfer errors, fairer retries and safer
+Version 0.5 is on hold while existing-library matching is investigated. Its source includes
+better Telegram recovery, isolated Google transfer errors, fairer retries and safer
 completion handling. Photo scanning and diagnostic cleanup also receive resource
 handling improvements. [Full changelog](docs/public/CHANGELOG.md).
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5 — 2026-10-22
+## 0.5 — Unreleased
 
 ### Upload recovery and retries
 
