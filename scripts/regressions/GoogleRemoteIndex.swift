@@ -2,13 +2,14 @@ import Foundation
 @testable import CloudifiedCore
 
 actor MetadataBoundary {
-    enum Mode { case valid, malformed, authentication, persistence }
+    enum Mode { case valid, malformed, authentication, persistence, optionalDenied }
     let mode: Mode
     var requests = 0
     init(_ mode: Mode) { self.mode = mode }
     func verifiedSubject() throws -> String { "verified-test-subject" }
     func libraryPage(cursor: GoogleLibraryCursor, subject: String) throws -> GoogleLibraryPage {
         requests += 1
+        if mode == .optionalDenied { throw SafeFailure(.authentication, domain: .google, code: 403, cause: .loginRequired) }
         if mode == .authentication { throw SafeFailure(.authentication, domain: .google, cause: .loginRequired) }
         if mode == .persistence { throw CoreError.persistence(10) }
         if mode == .malformed { throw SafeFailure(.transfer, domain: .google, cause: .formatRejected) }
@@ -141,6 +142,9 @@ func googleRemoteIndexChecks(root: URL) async throws {
         _ = try await positiveIndex.cursor(scope: scope, now: Date().addingTimeInterval(901))
         try await mustReject { _ = try await gated.checkLibraryCandidate(destination, resource: resource) }
     }
+    let denied = GoogleMatchingHarness(ledger, root: positiveFolder, mode: .optionalDenied)
+    check(try await denied.checkLibraryCandidate(destination, resource: resource) == nil,
+        "metadata-only denial blocked the already verified original upload path")
     let damagedFolder = root.appendingPathComponent("damaged-optional-cache")
     try FileManager.default.createDirectory(at: damagedFolder, withIntermediateDirectories: true)
     let damagedURL = damagedFolder.appendingPathComponent("google-metadata.sqlite")

@@ -75,7 +75,9 @@ bounded journal overhead. Each check reads at most two pages, with a 12-second
 request timeout. Partial sync resumes later; matching never treats incomplete
 coverage or a filename alone as Saved. Metadata older than a day is ignored for
 candidate decisions. If the private endpoint or cache is unavailable, Cloudified
-uses the existing exact-content path and records a diagnostic warning. Edited
+uses the existing exact-content path and records a diagnostic warning. A denied
+metadata endpoint can degrade only after the linked identity is verified; actual
+account and normal upload errors retain their safety gates. Edited
 copies, renamed items, missing quality or metadata and unsupported library layouts
 can still evade the additional check. A Storage Saver-only candidate is not held
 as an existing original; Google still determines how an upload is stored.
@@ -83,6 +85,9 @@ as an existing original; Google still determines how an upload is stored.
 The preview is an explicit download from GitHub Releases. Stable installer feeds
 and the website's regular Download button stay on 0.5. Keep your signing identity
 and container when updating; the metadata database is separate from upload receipts.
+An in-place downgrade to 0.5 is not supported: preview error/diagnostic values are
+new. Keep the container and update forward, or ask for rollback help without
+erasing protected uploads.
 
 ## Can one failed file stop every upload?
 

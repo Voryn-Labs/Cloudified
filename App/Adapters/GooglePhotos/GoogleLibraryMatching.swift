@@ -72,6 +72,14 @@ extension GooglePhotosProviderAdapter {
             try await verify(destination)
             return page
         } catch {
+            let failure = ProviderSupport.safe(error, domain: .google)
+            if failure.code == 403 {
+                // The immediately preceding hash lookup succeeded. Prove the
+                // linked identity again before degrading this optional endpoint.
+                do { try await verify(destination) }
+                catch { throw GoogleLibraryGate(underlying: error) }
+                throw SafeFailure(.transfer, domain: .google, code: 403, cause: .formatRejected)
+            }
             if ProviderSupport.blocksDestination(error, domain: .google) { throw GoogleLibraryGate(underlying: error) }
             throw error
         }
