@@ -18,6 +18,17 @@
       "category": "photo-video",
       "versions": [
         {
+          "version": "0.5",
+          "buildVersion": "32",
+          "marketingVersion": "0.5 (32)",
+          "date": "2026-10-22T06:09:27Z",
+          "localizedDescription": "Upload recovery and retries\n\n- Keep checking other Telegram recovery sources when an individual lookup is\n  missing, times out or returns an unusable history page. Uncertain sends remain\n  protected and are verified before another upload.\n- Isolate Google transfer-journal errors so one damaged result does not block\n  unrelated files. Reconcile system tasks that have ended and release stranded\n  upload waiters without treating an unknown Google commit as absent.\n- Move retryable file failures behind other ready items. Each item and destination\n  has at most three automatic send attempts; exhausted failures remain in\n  Activity → Needs attention, with identifying details and manual Retry.\n- Show destination-specific guidance for expired sign-ins, access problems,\n  storage limits and Telegram rate limits, including a retry time when available.\n  Account-wide problems pause the affected destination while the other can continue.\n- Wait for upload-completion callbacks before ending a backup run or settling a\n  destination, preventing premature teardown during recovery.\n\nResource handling and diagnostics\n\n- Drain temporary framework objects during photo scanning and streamed file writes.\n- Preserve signed capture timestamps and real fractional seconds in Google upload\n  metadata, including dates before 1970.\n- Retain diagnostic-export cleanup ownership after a failed deletion so cleanup\n  can be retried, and record preparation errors before attempting cleanup.\n- Clarify Older/Newest navigation in bounded activity history and explain retry\n  behavior in the failure list and FAQ.\n\nOriginal media bytes, pinned dependencies and bounded native-reader protection\nare retained. Recovery can still wait when the remote outcome cannot be verified;\nCloudified does not blindly resend such items. Background time remains controlled\nby iOS.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/build-39731681087/Cloudified-unsigned.ipa",
+          "size": 17932543,
+          "sha256": "6ec74685da1213a5a6779fb0957d569916aeafe37c5f9288ef7c7c720c46fce9",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.4",
           "buildVersion": "30",
           "marketingVersion": "0.4 (30)",
