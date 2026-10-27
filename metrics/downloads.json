@@ -7,9 +7,9 @@
     "publishedAt": "2026-10-22T06:09:27Z",
     "prerelease": false,
     "assetID": 664863554,
-    "downloads": 14
+    "downloads": 15
   },
-  "total": 57,
+  "total": 58,
   "releases": [
     {
       "tag": "build-39800988344",
@@ -25,7 +25,7 @@
       "publishedAt": "2026-10-22T06:09:27Z",
       "prerelease": false,
       "assetID": 664863554,
-      "downloads": 14
+      "downloads": 15
     },
     {
       "tag": "build-39627332114",
@@ -60,5 +60,5 @@
       "downloads": 20
     }
   ],
-  "collectedAt": "2026-10-26T22:44:38+00:00"
+  "collectedAt": "2026-10-27T05:13:35+00:00"
 }
