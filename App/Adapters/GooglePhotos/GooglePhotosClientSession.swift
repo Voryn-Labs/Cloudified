@@ -91,10 +91,15 @@ actor GooglePhotosClientSession {
         return client
     }
 
-    private func traced<T: Sendable>(_ stage: DiagnosticStage, work: () async throws -> T) async throws -> T {
+    private func traced<T: Sendable>(_ stage: DiagnosticStage, owner: EventContext? = nil, work: () async throws -> T) async throws -> T {
         let id = UUID(), started = ProcessInfo.processInfo.systemUptime
-        func context(_ status: DiagnosticStatus, reason: DiagnosticGoogleError? = nil, actualStage: DiagnosticStage? = nil) -> EventContext {
-            EventContext(origin: .google, diagnostic: DiagnosticDetail(stage: actualStage ?? stage, status: status, correlationID: id, googleError: reason))
+        func context(_ status: DiagnosticStatus, error: GPMCError? = nil) -> EventContext {
+            EventContext(runID: owner?.runID, origin: .google, destinationID: owner?.destinationID,
+                jobID: owner?.jobID, resourceID: owner?.resourceID, cycleID: owner?.cycleID, attempt: owner?.attempt,
+                diagnostic: DiagnosticDetail(stage: error?.diagnosticStage ?? stage, status: status, correlationID: id,
+                    httpStatus: error?.httpStatus, responseBytes: error?.responseBytes, googleError: error?.googleReason,
+                    googleStatus: error?.status?.rawCode, responseKind: error?.responseKind,
+                    requestSubmitted: stage == .googleCommit ? (status == .succeeded ? true : error.map { !$0.commitNotSubmitted }) : nil))
         }
         try? await diagnosticSink?(.setupTrace, context(.started), .proceed, .info, nil, nil, nil, nil)
         do {
@@ -104,9 +109,9 @@ actor GooglePhotosClientSession {
             return value
         } catch {
             let safe = (error as? GPMCError).map(Self.classify) ?? ProviderSupport.safe(error, domain: .google)
-            try? await diagnosticSink?(.setupTrace, context(.failed, reason: (error as? GPMCError)?.googleReason, actualStage: (error as? GPMCError)?.diagnosticStage), .wait, .error, safe,
+            try? await diagnosticSink?(.setupTrace, context(.failed, error: error as? GPMCError), .wait, .error, safe,
                 ProcessInfo.processInfo.systemUptime - started, nil, nil)
-            if let error = error as? GPMCError { throw SafeProviderFailure(failure: safe, retryAfter: error.retryAfter) }
+            if let error = error as? GPMCError { throw SafeProviderFailure(failure: safe, retryAfter: error.retryAfter, commitNotSubmitted: error.commitNotSubmitted) }
             throw error
         }
     }
@@ -130,31 +135,23 @@ actor GooglePhotosClientSession {
     }
 
     func libraryPage(cursor: GoogleLibraryCursor, subject: String) async throws -> GoogleLibraryPage {
-        do { return try await traced(.googleLibrarySync) { try await self.requireClient().libraryPage(cursor: cursor, subject: subject) } }
-        catch let error as GPMCError { throw SafeProviderFailure(failure: Self.classify(error), retryAfter: error.retryAfter) }
+        return try await traced(.googleLibrarySync) { try await self.requireClient().libraryPage(cursor: cursor, subject: subject) }
     }
 
     /// Checks remote presence by SHA-1 hash without uploading.
     func checkPresence(sha1: Data, asLivePhotoMotion: Bool = false) async throws -> String? {
         let client = try requireClient()
-        do {
-            return try await traced(.googleDuplicateCheck) {
-                try await client.remoteMediaKey(sha1: sha1, asLivePhotoMotion: asLivePhotoMotion)
-            }
-        } catch let err as GPMCError {
-            let classified = Self.classify(err)
-            try await emitDiagnostic(.failure, decision: .wait, severity: .error, failure: classified)
-            throw SafeProviderFailure(failure: classified, retryAfter: err.retryAfter)
+        return try await traced(.googleDuplicateCheck) {
+            try await client.remoteMediaKey(sha1: sha1, asLivePhotoMotion: asLivePhotoMotion)
         }
     }
 
     func prepareVerifiedUpload(file: URL, filename: String, modified: Date?, hash: Data, byteCount: Int64,
-                               stillHash: Data?, phase: @escaping @Sendable (UploadPhase) -> Void) async throws -> UploadPreparation {
-        do { return try await traced(.googleUploadPreparation) {
+                               stillHash: Data?, phase: @escaping @Sendable (UploadPhase) -> Void, context: EventContext? = nil) async throws -> UploadPreparation {
+        return try await traced(.googleUploadPreparation, owner: context) {
             try await self.requireClient().prepareVerifiedUpload(file: file, filename: filename, modified: modified,
                      hash: hash, byteCount: byteCount, stillHash: stillHash, phase: phase)
-        } }
-        catch let error as GPMCError { throw SafeProviderFailure(failure: Self.classify(error), retryAfter: error.retryAfter) }
+        }
     }
 
     /// Prepares an upload session for a standard photo or video original.
@@ -204,17 +201,12 @@ actor GooglePhotosClientSession {
         file: URL,
         transferID: UUID,
         foreground: Bool = false,
-        phase: @escaping @Sendable (UploadPhase) -> Void
+        phase: @escaping @Sendable (UploadPhase) -> Void,
+        context: EventContext? = nil
     ) async throws -> PreparedUpload {
         let client = try requireClient()
-        do {
-            return try await traced(.googleFileTransfer) {
-                try await client.transfer(prepared, file: file, transferID: transferID, foreground: foreground, phase: phase)
-            }
-        } catch let err as GPMCError {
-            let classified = Self.classify(err)
-            try await emitDiagnostic(.failure, decision: .wait, severity: .error, failure: classified)
-            throw SafeProviderFailure(failure: classified, retryAfter: err.retryAfter)
+        return try await traced(.googleFileTransfer, owner: context) {
+            try await client.transfer(prepared, file: file, transferID: transferID, foreground: foreground, phase: phase)
         }
     }
 
@@ -234,17 +226,12 @@ actor GooglePhotosClientSession {
         useQuota: Bool,
         saver: Bool,
         pairedStillHash: Data? = nil,
-        phase: @escaping @Sendable (UploadPhase) -> Void
+        phase: @escaping @Sendable (UploadPhase) -> Void,
+        context: EventContext? = nil
     ) async throws -> UploadOutcome {
         let client = try requireClient()
-        do {
-            return try await traced(.googleCommit) {
-                try await client.commit(prepared, useQuota: useQuota, saver: saver, pairedStillHash: pairedStillHash, phase: phase)
-            }
-        } catch let err as GPMCError {
-            let classified = Self.classify(err)
-            try await emitDiagnostic(.failure, decision: .wait, severity: .error, failure: classified)
-            throw SafeProviderFailure(failure: classified, retryAfter: err.retryAfter)
+        return try await traced(.googleCommit, owner: context) {
+            try await client.commit(prepared, useQuota: useQuota, saver: saver, pairedStillHash: pairedStillHash, phase: phase)
         }
     }
 

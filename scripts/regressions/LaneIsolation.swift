@@ -73,3 +73,30 @@ func laneChecks(root: URL) async throws {
     check(await barrier.entered.count == 2, "providers did not overlap")
     print("PASS actual engine: concurrent Google/Telegram, item inspection/upload failures isolated, healthy video confirms independently")
 }
+
+private struct AdmissionFailureBoundary: ProviderAdapter {
+    let provider = Provider.google
+    var canAcceptWork: Bool { get async throws { throw CoreError.persistence(5) } }
+    func inspect(destination: Destination, resource: ResourceRequirement) -> RemotePresence { preconditionFailure("admission fault was ignored") }
+    func upload(job: JobRecord, resource: ResourceRequirement, files: [LeasedFile], transferID: UUID,
+                progress: @escaping @Sendable (TransferProgress) async -> Void) -> UploadOutcome { preconditionFailure("admission fault started upload") }
+}
+func admissionFailureChecks(root: URL) async throws {
+    let f = try await fixture(root)
+    let files = try FileLeaseStore(root: root.appendingPathComponent(UUID().uuidString), ledger: f.ledger)
+    let engine = BackupEngine(ledger: f.ledger, files: files)
+    let results = try await engine.runReadyBatch(adapters: [AdmissionFailureBoundary()], preparer: LanePreparer(files: files, ids: [:]))
+    check(results.first?.failure?.cause == .persistenceFailed, "admission failure silently became empty capacity/idle")
+    check(try await f.ledger.snapshot().providers[0].confirmed == 0, "admission fault fabricated Saved")
+    let events = try await f.ledger.logPage(origin: .google, limit: 100)
+    check(events.events.filter { $0.operation == .laneStart }.count == 1 && events.events.filter { $0.operation == .laneEnd }.count == 1,
+        "throwing admission orphaned or duplicated lane lifecycle")
+    let telegram = TelegramAdmissionHarness()
+    check(try await telegram.canAcceptWork, "healthy Telegram cannot admit")
+    await telegram.fill()
+    check(try await !telegram.canAcceptWork, "Telegram native reader cap relaxed")
+    await telegram.fail(SafeFailure(.reconciliation, domain: .tdlib, cause: .nativeResponseInvalid))
+    do { _ = try await telegram.canAcceptWork; preconditionFailure("Telegram stream error silently became no capacity") }
+    catch let error as SafeFailure { check(error.cause == .nativeResponseInvalid, "Telegram admission hid original stream error") }
+    print("PASS actual admission error: persistence failure surfaces in lane result instead of silently reporting no capacity")
+}

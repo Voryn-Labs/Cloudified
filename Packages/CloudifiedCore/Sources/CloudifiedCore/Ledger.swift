@@ -20,6 +20,9 @@ public actor Ledger {
         self.version = version; self.revision = revision
         let connection = try SQLite(url: databaseURL)
         try Schema.install(connection)
+        try connection.execute("CREATE INDEX IF NOT EXISTS diagnostic_priority ON events(critical,seq)")
+        try connection.execute("CREATE INDEX IF NOT EXISTS diagnostic_failure_job ON failures(job_id,seq)")
+        try connection.execute("CREATE INDEX IF NOT EXISTS transfers_job ON transfers(job_id)")
         // Runtime ownership must be reconciled on EVERY process start, even if a
         // previous history scan completed. Neither persisted lease counts nor a
         // previously absent remote lookup establish post-crash absence.
@@ -134,7 +137,7 @@ public actor Ledger {
         try transaction {
             try db.execute("UPDATE destinations SET blocked=NULL,resume_at=NULL WHERE id=? AND (blocked IS NOT NULL OR resume_at IS NOT NULL)", [id.sql])
             let unblocked = db.changes > 0
-            try db.execute("UPDATE jobs SET state='reconciling',retry_at=NULL WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'')!='pairingUnverified'", [id.sql])
+            try wakeWaiting(destinationID: id)
             if unblocked || db.changes > 0 { try record(.resume, context: EventContext(destinationID: id), decision: .reconcile) }
         }
     }

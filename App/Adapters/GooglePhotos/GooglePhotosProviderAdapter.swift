@@ -2,7 +2,7 @@ import Foundation
 import CloudifiedCore
 
 /// Original/non-quota wire behavior comes from pinned PhotosBackup. This actor
-/// adds verified account scope and durable evidence; it never retries an asset.
+/// adds verified account scope and durable acceptance evidence. Core owns media retries.
 actor GooglePhotosProviderAdapter: ProviderAdapter {
     nonisolated let provider = Provider.google
     nonisolated var prefetchesNextOriginal: Bool { false }
@@ -13,6 +13,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
         var prepared: [PreparedUpload?]
         var mediaKeys: [String?]
         var commitIndex: Int?
+        var commitAttempts: [Int]?
         // Optional for old checkpoints. Legacy prepared states with a key are
         // conservatively treated as uploaded, never as proof of rejection.
         var didUpload: Bool?
@@ -31,9 +32,9 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
         self.session = session; self.ledger = ledger; self.files = files; self.background = background; self.catalogURL = catalogURL
     }
     var canAcceptWork: Bool {
-        get async {
-            guard let destination = try? await ledger.selectedDestination(.google) else { return false }
-            return (try? await queuedBytes(destination)) != nil
+        get async throws {
+            guard let destination = try await ledger.selectedDestination(.google) else { return false }
+            return try await queuedBytes(destination) != nil
         }
     }
     /// Inventoried single-original readers and unreadable results retain exact
@@ -208,21 +209,27 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                     }
                     state.prepared[index] = received; state.commitIndex = index
                     state.didUpload = true
+                    try reserveCommit(&state, index: index, count: transfer.resource.originals.count)
                     try await save(transfer.job.id, requested, transfer.resource, transfer.id, .committing, state)
                     // Durable fence precedes RPC; a crash here remains uncertain.
                     do {
                         let outcome = try await session.commit(prepared: received, useQuota: false, saver: false,
-                            pairedStillHash: transfer.resource.originals.count == 2 && index == 1 ? ProviderSupport.hex(transfer.resource.originals[0].sha1, count: 20) : nil, phase: { _ in })
+                            pairedStillHash: transfer.resource.originals.count == 2 && index == 1 ? ProviderSupport.hex(transfer.resource.originals[0].sha1, count: 20) : nil, phase: { _ in }, context: ProviderSupport.context(transfer.job, transfer.resource))
                         state.mediaKeys[index] = outcome.mediaKey; state.commitIndex = nil
                     } catch {
                         // The OS transfer is terminal here; only commit acceptance
                         // is unknown. Retain that fence without retaining a reader
                         // or preventing the next asset from being checked.
                         let safe = ProviderSupport.safe(error, domain: .google)
-                        try await save(transfer.job.id, requested, transfer.resource, transfer.id, .uncertain, state)
+                        let notSubmitted = (error as? SafeProviderFailure)?.commitNotSubmitted == true
+                        if notSubmitted { releaseCommit(&state, index: index); state.commitIndex = nil }
+                        let failurePhase: ProviderCheckpointPhase = notSubmitted
+                            ? (state.mediaKeys.contains(where: { $0 != nil }) ? .partial : .rejected) : .uncertain
+                        try await save(transfer.job.id, requested, transfer.resource, transfer.id, failurePhase, state)
                         try await ledger.failAttempt(jobID: transfer.job.id,
-                            failure: UploadFailure(safe, disposition: ProviderSupport.disposition(safe), acceptance: .unknown,
-                                retryAfter: (error as? SafeProviderFailure)?.retryAfter, didStartTransfer: false),
+                            failure: UploadFailure(safe, disposition: ProviderSupport.disposition(safe),
+                                acceptance: notSubmitted ? .definitelyNotAccepted : .unknown,
+                                retryAfter: (error as? SafeProviderFailure)?.retryAfter, didStartTransfer: notSubmitted),
                             resourceID: transfer.resource.id, transferID: transfer.id)
                         try await files.transportFinished(transfer.id); await background?.forget(transferID: transfer.id)
                         if ProviderSupport.blocksDestination(error, domain: .google) || error is CancellationError { throw error }
@@ -298,7 +305,9 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                     guard let index = state.commitIndex, resource.originals.indices.contains(index),
                           state.mediaKeys.count == resource.originals.count else { return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown)) }
                     if state.mediaKeys[index] == nil {
-                        guard let key = try await session.checkPresence(sha1: ProviderSupport.hex(resource.originals[index].sha1, count: 20), asLivePhotoMotion: resource.originals.count == 2 && index == 1) else { return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown)) }
+                        guard let key = try await session.checkPresence(sha1: ProviderSupport.hex(resource.originals[index].sha1, count: 20), asLivePhotoMotion: resource.originals.count == 2 && index == 1) else {
+                            return try await resumeCommit(checkpoint, requested: requested, resource: resource, state: state, index: index)
+                        }
                         state.mediaKeys[index] = key
                     }
                     state.commitIndex = nil; state.prepared[index] = nil
@@ -307,7 +316,10 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                     // An unsettled OS transfer is not absence, even if a hash
                     // lookup currently misses. Recovery owns its inventory.
                     return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown))
-                case .prepared, .rejected, .partial: break
+                case .prepared, .rejected, .partial:
+                    if let index = state.prepared.indices.first(where: { state.mediaKeys[$0] == nil && state.prepared[$0]?.receipt != nil }) {
+                        return try await resumeCommit(checkpoint, requested: requested, resource: resource, state: state, index: index)
+                    }
                 }
                 if let receipt = try acceptedReceipt(requested, resource, state) {
                     try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, .confirmed, state)
@@ -396,7 +408,7 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                 let preparation = try await session.prepareVerifiedUpload(file: input.url, filename: descriptor.originalFilename,
                     modified: recipe.metadata.creationDate ?? recipe.metadata.modificationDate,
                     hash: ProviderSupport.hex(original.sha1, count: 20), byteCount: original.byteCount,
-                    stillHash: inputs.count == 2 && index == 1 ? ProviderSupport.hex(resource.originals[0].sha1, count: 20) : nil, phase: phase)
+                    stillHash: inputs.count == 2 && index == 1 ? ProviderSupport.hex(resource.originals[0].sha1, count: 20) : nil, phase: phase, context: ProviderSupport.context(job, resource))
                 switch preparation {
                 case .alreadyBackedUp(let key):
                     state.mediaKeys[index] = key
@@ -413,15 +425,16 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
                         await pump.stop()
                         return .submitted
                     }
-                    let received = try await session.transfer(prepared: prepared, file: input.url, transferID: transferID, phase: phase)
+                    let received = try await session.transfer(prepared: prepared, file: input.url, transferID: transferID, phase: phase, context: ProviderSupport.context(job, resource))
                     state.prepared[index] = received
                     state.commitIndex = index
                     state.didUpload = true
                     // Write receipt and committing fence BEFORE submitting RPC.
+                    try reserveCommit(&state, index: index, count: resource.originals.count)
                     try await save(job.id, job.destination, resource, transferID, .committing, state)
                     commitSubmitted = true
                     let result = try await session.commit(prepared: received, useQuota: false, saver: false,
-                        pairedStillHash: inputs.count == 2 && index == 1 ? ProviderSupport.hex(resource.originals[0].sha1, count: 20) : nil, phase: phase)
+                        pairedStillHash: inputs.count == 2 && index == 1 ? ProviderSupport.hex(resource.originals[0].sha1, count: 20) : nil, phase: phase, context: ProviderSupport.context(job, resource))
                     state.mediaKeys[index] = result.mediaKey
                     state.prepared[index] = nil; state.commitIndex = nil; state.didUpload = true
                     try await save(job.id, job.destination, resource, transferID, .prepared, state)
@@ -449,6 +462,11 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
             return .confirmed(receipt, .terminal)
         } catch {
             let safe = ProviderSupport.safe(error, domain: .google)
+            let notSubmitted = (error as? SafeProviderFailure)?.commitNotSubmitted == true
+            if notSubmitted {
+                if let index = state.commitIndex { releaseCommit(&state, index: index) }
+                state.commitIndex = nil; commitSubmitted = false
+            }
             if wroteCheckpoint, let background {
                 do {
                     switch try await background.inventory(transferID) {
@@ -473,7 +491,82 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
             let preSendWait = !didStartTransfer && !commitSubmitted && (safe.category == .connectivity || safe.category == .timeout)
             return .failed(UploadFailure(safe, disposition: preSendWait ? .waiting : ProviderSupport.disposition(safe),
                            acceptance: commitSubmitted || safe.category == .reconciliation ? .unknown : .definitelyNotAccepted,
-                           retryAfter: (error as? SafeProviderFailure)?.retryAfter, didStartTransfer: didStartTransfer && safe.cause != .interrupted), .terminal)
+                           retryAfter: (error as? SafeProviderFailure)?.retryAfter, didStartTransfer: didStartTransfer && (safe.cause != .interrupted || notSubmitted)), .terminal)
+        }
+    }
+    private func reserveCommit(_ state: inout State, index: Int, count: Int) throws {
+        var attempts = state.commitAttempts ?? Array(repeating: 0, count: count)
+        guard attempts.count == count, attempts.indices.contains(index) else { throw CoreError.invalidContract }
+        guard attempts[index] < 3 else { throw SafeFailure(.finalization, domain: .google, cause: .commitRecoveryExhausted) }
+        attempts[index] += 1; state.commitAttempts = attempts
+    }
+    private func releaseCommit(_ state: inout State, index: Int) {
+        guard var attempts = state.commitAttempts, attempts.indices.contains(index) else { return }
+        attempts[index] = max(0, attempts[index] - 1); state.commitAttempts = attempts
+    }
+    /// Invoked only after an exact-hash miss. Reuses the completed upload receipt,
+    /// never an original file or PUT, and never treats an attempted commit as Saved.
+    private func resumeCommit(_ checkpoint: ProviderCheckpoint, requested: Destination, resource: ResourceRequirement,
+                              state originalState: State, index: Int) async throws -> RemotePresence {
+        guard checkpoint.inputsTerminal, try await !ledger.hasRetainedTransfers(jobID: checkpoint.jobID),
+              let prepared = originalState.prepared[index], prepared.receipt != nil,
+              prepared.hash == (try ProviderSupport.hex(resource.originals[index].sha1, count: 20)),
+              prepared.byteCount == resource.originals[index].byteCount,
+              prepared.uploadURL.scheme == "https", prepared.uploadURL.host == "photos.googleapis.com" else {
+            return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown))
+        }
+        if let background {
+            guard case .absent = try await background.inventory(checkpoint.transferID) else {
+                return .unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown))
+            }
+        }
+        try Task.checkCancellation()
+        let commitContext = ProviderSupport.context(try await ledger.job(checkpoint.jobID), resource)
+        var state = originalState
+        do { try reserveCommit(&state, index: index, count: resource.originals.count) }
+        catch let failure as SafeFailure { return .unknown(failure) }
+        state.commitIndex = index
+        try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, .committing, state)
+        let key: String
+        do {
+            let result = try await session.commit(prepared: prepared, useQuota: false, saver: false,
+                pairedStillHash: resource.originals.count == 2 && index == 1 ? ProviderSupport.hex(resource.originals[0].sha1, count: 20) : nil,
+                phase: { _ in }, context: commitContext)
+            try await verify(requested)
+            guard !result.mediaKey.isEmpty, result.mediaKey.utf8.count <= 2048 else { throw CoreError.invalidContract }
+            key = result.mediaKey
+        } catch {
+            try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, .uncertain, state)
+            if error is CancellationError || ProviderSupport.blocksDestination(error, domain: .google) { throw error }
+            let exhausted = (state.commitAttempts?[index] ?? 3) >= 3
+            return .unknown(SafeFailure(.finalization, domain: .google,
+                cause: exhausted ? .commitRecoveryExhausted : .commitRecoveryPending))
+        }
+        state.mediaKeys[index] = key; state.prepared[index] = nil; state.commitIndex = nil; state.didUpload = true
+        if let receipt = try acceptedReceipt(requested, resource, state) {
+            try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, .confirmed, state)
+            return .present(receipt)
+        }
+        try await save(checkpoint.jobID, requested, resource, checkpoint.transferID, .partial, state)
+        if state.mediaKeys.allSatisfy({ $0 != nil }) {
+            return .unknown(SafeFailure(.finalization, domain: .google, cause: .pairingUnverified))
+        }
+        let accepted = Set(zip(resource.originals, state.mediaKeys).compactMap { $0.1 == nil ? nil : $0.0.sha256 })
+        if let failure = try await checkLibraryCandidate(requested, resource: resource, acceptedOriginals: accepted) { return .unknown(failure) }
+        return .verifiedAbsent // Only the never-accepted component remains to be sent.
+    }
+    func resetFinalizationBudget(jobID: UUID, destination: Destination) async throws {
+        guard !busy else { throw SafeFailure(.connectivity, domain: .google, cause: .operationBusy) }
+        busy = true; defer { busy = false }
+        try await verify(destination)
+        let job = try await ledger.job(jobID)
+        guard job.destination.id == destination.id, try await !ledger.hasRetainedTransfers(jobID: jobID) else { throw CoreError.invalidTransition }
+        for resource in job.plan.resources {
+            guard let checkpoint = try await ledger.providerCheckpoint(destinationID: destination.id, tag: resource.tag),
+                  checkpoint.inputsTerminal, checkpoint.phase == .uncertain || checkpoint.phase == .committing else { continue }
+            var state = try decoded(checkpoint, resource: resource)
+            state.commitAttempts = Array(repeating: 0, count: resource.originals.count)
+            try await save(checkpoint.jobID, destination, resource, checkpoint.transferID, checkpoint.phase, state)
         }
     }
     private func decoded(_ checkpoint: ProviderCheckpoint, resource: ResourceRequirement) throws -> State {
@@ -481,6 +574,11 @@ actor GooglePhotosProviderAdapter: ProviderAdapter {
         guard state.prepared.count == resource.originals.count, state.mediaKeys.count == resource.originals.count,
               state.mediaKeys.allSatisfy({ $0.map { !$0.isEmpty && $0.utf8.count <= 2048 } ?? true }),
               state.commitIndex.map({ resource.originals.indices.contains($0) }) ?? true else { throw CoreError.invalidContract }
+        if state.commitAttempts == nil {
+            state.commitAttempts = resource.originals.indices.map { state.commitIndex == $0 ? 1 : 0 }
+        }
+        guard let attempts = state.commitAttempts, attempts.count == resource.originals.count,
+              attempts.allSatisfy({ (0...3).contains($0) }) else { throw CoreError.invalidContract }
         // Older foreground code left commitIndex pointing at an accepted component
         // even in prepared/rejected states. Its key is evidence, not a pending RPC.
         if checkpoint.phase == .prepared || checkpoint.phase == .rejected || checkpoint.phase == .partial,

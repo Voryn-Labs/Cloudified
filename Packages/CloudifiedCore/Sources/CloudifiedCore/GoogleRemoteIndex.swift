@@ -91,7 +91,7 @@ public actor GoogleRemoteIndex {
     }
     public func apply(_ page: GoogleLibraryPage, expected: GoogleLibraryCursor, now: Date = Date()) throws -> GoogleLibraryCursor {
         guard try load() == expected, !expected.complete, expected.pages < 512,
-              page.items.count <= 1000, page.deleted.count <= 1000,
+              page.items.count <= 5000, page.deleted.count <= 5000,
               page.resume.utf8.count <= 8192, page.sync.utf8.count <= 8192,
               page.skipped >= 0, page.items.allSatisfy(\.valid),
               page.resume.isEmpty || page.resume != expected.resume else { throw CoreError.invalidContract }

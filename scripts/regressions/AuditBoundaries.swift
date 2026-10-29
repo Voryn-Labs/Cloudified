@@ -16,10 +16,18 @@ protocol FileUploadTransport: Sendable {
     func forget(transferID: UUID) async
 }
 struct GPMCError: Error {
-    enum Kind { case malformed, transport }
-    let kind: Kind
+    enum Kind { case malformed, transport, server(Int), credentialRejected, storageFull }
+    var kind: Kind = .malformed
     let message: String
+    var status: GoogleStatus? = nil
+    var retryAfter: Date? = nil
     var transportFailure: SafeFailure? = nil
+    var googleReason: DiagnosticGoogleError? = nil
+    var httpStatus: Int? = nil
+    var responseBytes: Int? = nil
+    var responseKind: DiagnosticResponseKind? = nil
+    var commitNotSubmitted = false
+    var diagnosticStage: DiagnosticStage? = nil
 }
 private actor ControlBarrier {
     var first: CheckedContinuation<Void, Never>?
@@ -42,6 +50,18 @@ private final class ControlProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didLoad: Data([1]))
             client?.urlProtocolDidFinishLoading(self)
         }
+    }
+    override func stopLoading() {}
+}
+private final class MetadataPageProtocol: URLProtocol, @unchecked Sendable {
+    static let payload = Data(repeating: 1, count: 2_097_152)
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.payload)
+        client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
 }
@@ -132,13 +152,79 @@ func auditBoundaryChecks(root: URL) async throws {
     catch { }
     print("PASS actual video splitter: streamed parts reassemble byte-exactly; small input cannot return invalid split recipe")
 
+    let receipt = PreparedUpload(uploadURL: URL(string: "https://photos.googleapis.com/fixture")!,
+        hash: Data(repeating: 1, count: 20), filename: "fixture.heic", modified: Date(), byteCount: 3)
+    do {
+        _ = try await CommitSubmissionHarness(started: false).commit(receipt, useQuota: false, saver: false, phase: { _ in })
+        preconditionFailure("pre-submit cancellation succeeded")
+    } catch let error as GPMCError {
+        check(error.commitNotSubmitted && error.transportFailure?.cause == .interrupted
+              && error.diagnosticStage == .googleCommitNotSubmitted,
+            "pre-submit cancellation lost its explicit no-request proof")
+    }
+    do {
+        _ = try await CommitSubmissionHarness(started: true).commit(receipt, useQuota: false, saver: false, phase: { _ in })
+        preconditionFailure("submitted cancellation succeeded")
+    } catch is CancellationError {}
+    print("PASS actual commit boundary: only current never-submitted cancellation clears uncertainty")
+
+    let errorData = Proto.int(1, 13) + Proto.string(2, "PRIVATE RESPONSE MUST NOT ENTER PUBLIC DIAGNOSTICS")
+    let httpError = HTTPURLResponse(url: URL(string: "https://boundary.invalid/commit")!, statusCode: 500, httpVersion: nil,
+        headerFields: ["Content-Type": "application/x-protobuf"])!
+    do { try HTTPFailureHarness().check(errorData, httpError); preconditionFailure("HTTP 500 accepted") }
+    catch let error as GPMCError {
+        check(error.httpStatus == 500 && error.status?.rawCode == 13 && error.responseBytes == errorData.count
+            && error.responseKind == .protobuf, "Google rejection lost structured HTTP/RPC evidence")
+    }
+    let jsonError = Data(#"{"error":{"code":500,"status":"INTERNAL","message":"PRIVATE JSON MESSAGE"}}"#.utf8)
+    do { try HTTPFailureHarness().check(jsonError, httpError); preconditionFailure("JSON HTTP 500 accepted") }
+    catch let error as GPMCError {
+        check(error.status?.rawCode == 13 && error.responseKind == .json, "structured JSON Google reason lost or mistaken for protobuf")
+    }
+    for invalid in [Data(), Proto.bytes(1, Proto.bytes(3, Proto.string(1, ""))), Proto.bytes(1, Proto.bytes(3, Proto.string(1, String(repeating: "x", count: 2049)))), Data([255])] {
+        do { _ = try HTTPFailureHarness().mediaKey(invalid); preconditionFailure("invalid or empty key accepted as upload success") }
+        catch let error as GPMCError {
+            check(error.httpStatus == 200 && error.responseBytes == invalid.count
+                && (!invalid.isEmpty || error.responseKind == .empty)
+                && [.commitKeyMissing, .commitResponseInvalid].contains(error.googleReason), "unconfirmed HTTP 200 lost precise protocol failure evidence")
+        }
+    }
+    check(try HTTPFailureHarness().mediaKey(Proto.bytes(1, Proto.bytes(3, Proto.string(1, "real-key")))) == "real-key", "valid confirmation key rejected")
+    print("PASS actual HTTP error evidence: HTTP status, canonical Google code, response shape/size preserved without exporting raw message")
+
     let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ControlProtocol.self]
     let control = ForegroundFileUploadTransport(configuration: config, reuseDataSession: true)
-    async let first = control.requestData(URLRequest(url: URL(string: "https://boundary.invalid/one")!))
+    let submission = GoogleCommitDispatch()
+    let cancelledSubmission = GoogleCommitDispatch()
+    let cancelledControl = Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try await control.requestData(URLRequest(url: URL(string: "https://boundary.invalid/cancelled")!),
+            onStart: { cancelledSubmission.markSubmitted() })
+    }
+    do { _ = try await cancelledControl.value; preconditionFailure("cancelled request started") }
+    catch is CancellationError {}
+    check(!cancelledSubmission.submitted, "pre-start cancellation fabricated commit submission")
+    async let first = control.requestData(URLRequest(url: URL(string: "https://boundary.invalid/one")!),
+        onStart: { submission.markSubmitted() })
     async let second = control.requestData(URLRequest(url: URL(string: "https://boundary.invalid/two")!))
     let responses = try await (first, second)
+    check(submission.submitted, "resumed control task did not fence ambiguous acceptance")
     check(responses.0.0 == Data([1]) && responses.1.0 == Data([1]), "overlapping control responses collided")
     print("PASS actual Google HTTP transport: concurrent control requests complete on one reused session without operation collisions")
+
+    let metadataConfig = URLSessionConfiguration.ephemeral
+    metadataConfig.protocolClasses = [MetadataPageProtocol.self]
+    let metadataTransport = ForegroundFileUploadTransport(configuration: metadataConfig, reuseDataSession: true)
+    let metadataRequest = URLRequest(url: URL(string: "https://boundary.invalid/library")!)
+    do {
+        _ = try await metadataTransport.requestData(metadataRequest)
+        preconditionFailure("shared 1 MiB HTTP cap accepted an oversized metadata response")
+    } catch let error as GPMCError {
+        check(error.googleReason == .responseLimit, "old cap did not reproduce the safely classified failure")
+    }
+    let metadataResponse = try await metadataTransport.requestData(metadataRequest, responseLimit: 4_194_304)
+    check(metadataResponse.0 == MetadataPageProtocol.payload, "dedicated metadata HTTP budget still rejects valid large response")
+    print("PASS actual Google metadata HTTP: old 1 MiB rejection reproduced; dedicated 4 MiB succeeds without relaxing default controls")
 
     let liveID = UUID(), reserve = try await f.ledger.reserveStorage(bytes: 3, availableBytes: 2_000_000_000, transportOverhead: 0)
     let writer = try await store.beginExport(fileID: liveID)
@@ -149,6 +235,9 @@ func auditBoundaryChecks(root: URL) async throws {
     let batch = Task { try await engine.runReadyBatch(adapters: [adapter], preparer: CancelPreparer(store: store, id: liveID)) }
     while await !adapter.entered { await Task.yield() }
     batch.cancel(); _ = try await batch.value
+    let interruptions = try await f.ledger.logPage(origin: .google, limit: 100, reportFocus: .rootCauses)
+    check(interruptions.events.contains { $0.context.diagnostic?.stage == .workerInterruption && $0.context.jobID == f.jobID
+        && $0.context.diagnostic?.policyCause == .interrupted }, "cancelled worker lost job-linked cancellation cause")
     check(try await f.ledger.snapshot().providers.first { $0.provider == .google }?.retainedTransfers == 1, "parent cancellation released unresolved transport")
     print("PASS actual engine cancellation: cancelled batch joins worker while preserving unresolved native hold")
 }

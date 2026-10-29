@@ -189,16 +189,20 @@ public actor BackupEngine {
                          source: (any SourceWorkProducer)?, runID: UUID) async -> LaneResult {
         let provider = adapter.provider
         var destinationID: UUID?
+        var laneStarted = false, laneEnded = false
         defer { active.removeValue(forKey: provider); progressAt.removeValue(forKey: provider); transportRecovery.remove(provider) }
         do {
             destinationID = destination.id
             try await ledger.appendEvent(.laneStart, context: EventContext(runID: runID, origin: provider.origin, destinationID: destination.id), decision: .proceed)
+            laneStarted = true
+            var stopReason: DiagnosticQueueReason = .noRunnableWork
             while try await runnable(destination.id) {
-                if recoveryPending.contains(provider) { break }
-                guard await adapter.canAcceptWork else { break }
+                if recoveryPending.contains(provider) { stopReason = .recoveryPending; break }
+                guard try await adapter.canAcceptWork else { stopReason = .providerCapacity; break }
                 if let job = try await ledger.claimNext(destinationID: destination.id, runID: runID) {
                     guard try await adapter.canAdmit(job) else {
                         try await ledger.releaseClaim(jobID: job.id)
+                        stopReason = .providerCapacity
                         break
                     }
                     try await process(job, adapter: adapter, preparer: preparer, source: source, runID: runID)
@@ -208,18 +212,40 @@ public actor BackupEngine {
                     continue
                 } else { break }
             }
-            try await ledger.appendEvent(.laneEnd, context: EventContext(runID: runID, origin: provider.origin, destinationID: destination.id), decision: .wait)
+            if systemGate != nil { stopReason = .systemGate }
+            else if paused { stopReason = .paused }
+            else if Task.isCancelled { stopReason = .cancelled }
+            else if try await !ledger.canRun(destination.id) { stopReason = .accountGate }
+            try await ledger.appendEvent(.laneEnd, context: EventContext(runID: runID, origin: provider.origin,
+                destinationID: destination.id, diagnostic: DiagnosticDetail(stage: .queueAdmission, status: .changed,
+                    correlationID: UUID(), policyCause: systemGate, queueReason: stopReason)), decision: .wait)
+            laneEnded = true
             return LaneResult(provider: provider, nextWake: try await ledger.nextWake(destinationID: destination.id), failure: nil,
                               requiresRecovery: transportRecovery.contains(provider))
         } catch {
-            if error is CancellationError { return LaneResult(provider: provider, nextWake: nil, failure: nil, requiresRecovery: transportRecovery.contains(provider)) }
+            if error is CancellationError {
+                if laneStarted && !laneEnded { try? await ledger.appendEvent(.laneEnd, context: EventContext(runID: runID, origin: provider.origin,
+                    destinationID: destinationID, diagnostic: DiagnosticDetail(stage: .queueAdmission, status: .changed,
+                        correlationID: UUID(), policyCause: systemGate, queueReason: systemGate != nil ? .systemGate : paused ? .paused : .cancelled)), decision: .wait) }
+                return LaneResult(provider: provider, nextWake: nil, failure: nil, requiresRecovery: transportRecovery.contains(provider))
+            }
             let failure = Self.safe(error)
             failures[provider] = failure
             // DB failure cannot reliably log to that DB. In-memory safe failure is
             // exposed by EngineSnapshot; P5 also records it in OSLog without SQL.
-            try? await ledger.appendEvent(.databaseFailure, context: EventContext(runID: runID, origin: provider.origin, destinationID: destinationID), decision: .reconcile, severity: .error, failure: failure)
+            try? await ledger.appendEvent(failure.domain == .sqlite ? .databaseFailure : .failure, context: EventContext(runID: runID, origin: provider.origin, destinationID: destinationID), decision: .reconcile, severity: .error, failure: failure)
+            if laneStarted && !laneEnded { try? await ledger.appendEvent(.laneEnd, context: EventContext(runID: runID, origin: provider.origin,
+                destinationID: destinationID, diagnostic: DiagnosticDetail(stage: .queueAdmission, status: .failed,
+                    correlationID: UUID(), policyCause: systemGate)), decision: .wait, severity: .error, failure: failure) }
             return LaneResult(provider: provider, nextWake: nil, failure: failure, requiresRecovery: transportRecovery.contains(provider))
         }
+    }
+    private func recordInterruption(_ job: JobRecord, resource: UUID, runID: UUID) async {
+        guard Task.isCancelled else { return }
+        try? await ledger.appendEvent(.setupTrace, context: EventContext(runID: runID, origin: job.destination.provider.origin,
+            destinationID: job.destination.id, jobID: job.id, resourceID: resource, cycleID: job.cycleID,
+            attempt: job.attempts, diagnostic: DiagnosticDetail(stage: .workerInterruption, status: .changed,
+                correlationID: UUID(), policyCause: systemGate ?? (paused ? .paused : .interrupted))), decision: .wait)
     }
     private func update(_ job: JobRecord, resource: UUID?, phase: LanePhase, bytes: Int64? = nil, expected: Int64? = nil) {
         active[job.destination.provider] = LaneActivity(jobID: job.id, destinationID: job.destination.id, resourceID: resource,
@@ -236,6 +262,7 @@ public actor BackupEngine {
                 return
             }
             let presence = await adapter.inspect(destination: initial.destination, resource: resource)
+            await recordInterruption(initial, resource: resource.id, runID: runID)
             try await ledger.applyPresence(presence, jobID: initial.id, resourceID: resource.id, runID: runID)
             switch presence {
             case .unknown, .destinationBlocked: return
@@ -329,6 +356,7 @@ public actor BackupEngine {
                     destinationID: job.destination.id, jobID: job.id, resourceID: resource.id,
                     cycleID: job.cycleID, attempt: job.attempts), bytes: bytes,
                     expectedBytes: active[provider]?.expectedBytes, force: true) { onDiagnosticFailure(failure) }
+            await recordInterruption(job, resource: resource.id, runID: runID)
             // Transport owns durable holds; runtime worker references can leave.
             // If any persistence step fails, holds survive rather than risk cleanup.
             do {

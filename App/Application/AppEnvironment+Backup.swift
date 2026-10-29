@@ -255,7 +255,8 @@ extension AppEnvironment {
             self.retryDeadlines = self.retryDeadlines.filter { $0.value > Date() }
             if let snapshot = try? await self.ledger?.snapshot() {
                 guard !Task.isCancelled, self.backupRequested, !self.pausedByUser else { return }
-                for value in snapshot.providers where due.contains(value.provider) && !value.recoveryComplete {
+                for value in snapshot.providers where due.contains(value.provider)
+                    && (!value.recoveryComplete || self.forceRecovery.contains(value.provider)) {
                     self.requestRecovery(value.provider)
                 }
             }
@@ -365,6 +366,14 @@ extension AppEnvironment {
                 defer { self.endProviderChange(token) }
                 guard let destination = try await ledger.selectedDestination(provider), destination.id == item.destinationID else { throw CoreError.staleMapping }
                 try await self.recoverMapping(destination)
+                if provider == .google, let jobID = item.jobID,
+                   try await ledger.job(jobID).state != .confirmed,
+                   try await !ledger.hasRetainedTransfers(jobID: jobID) {
+                    try await self.googleAdapter?.resetFinalizationBudget(jobID: jobID, destination: destination)
+                    // Explicit review restarts verification; the provider's
+                    // uncertain checkpoint still forbids an unverified resend.
+                    try await ledger.explicitRetry(jobID: jobID)
+                }
                 try await ledger.unblockDestination(destination.id)
                 try await self.backupEngine?.setEnabled(destinationID: destination.id, enabled: enabled)
                 await self.establishStartupInventory(); self.reloadFailures()

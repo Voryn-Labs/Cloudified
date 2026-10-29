@@ -46,7 +46,7 @@ extension Ledger {
         try transaction {
             guard try canRun(destinationID, now: now) else { return nil }
             try db.execute("UPDATE jobs SET state='reconciling' WHERE destination_id=? AND state='waiting' AND retry_at<=?", [destinationID.sql, now.sql])
-            try db.execute("UPDATE jobs SET state='reconciling' WHERE destination_id=? AND state='waiting' AND EXISTS(SELECT 1 FROM destinations d WHERE d.id=? AND d.blocked IS NOT NULL AND d.resume_at<=?)", [destinationID.sql, destinationID.sql, now.sql])
+            try db.execute("UPDATE jobs SET state='reconciling' WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'') NOT IN ('pairingUnverified','possibleOriginalMatch','commitRecoveryPending','commitRecoveryExhausted') AND NOT (COALESCE(json_extract(CAST(failure AS TEXT),'$.domain'),'')='google' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'')='outcomeUnknown') AND EXISTS(SELECT 1 FROM destinations d WHERE d.id=? AND d.blocked IS NOT NULL AND d.resume_at<=?)", [destinationID.sql, destinationID.sql, now.sql])
             try db.execute("UPDATE destinations SET blocked=NULL,resume_at=NULL WHERE id=? AND resume_at<=?", [destinationID.sql, now.sql])
             guard let row = try db.rows("""
                 SELECT j.id FROM jobs j WHERE j.destination_id=?
@@ -79,9 +79,12 @@ extension Ledger {
             case .unknown(let error):
                 try moveToQueueEnd(jobID)
                 try storeFailure(error, job: job)
-                let retry = try inspectionDeadline(error, job: job)
-                try db.execute("UPDATE jobs SET state='waiting',failure=?,retry_at=? WHERE id=?", [try db.encode(error), retry?.sql ?? .null, jobID.sql])
-                try record(.remoteCheck, context: context(job, runID: runID, resource: resourceID), severity: .warning, decision: .reconcile, from: job.state, to: .waiting, failure: error)
+                let exhausted = error.domain == .google && error.cause == .commitRecoveryExhausted
+                let next: JobState = exhausted ? .failed : .waiting
+                let retry = exhausted ? nil : try inspectionDeadline(error, job: job)
+                try db.execute("UPDATE jobs SET state=?,failure=?,retry_at=? WHERE id=?", [.text(next.rawValue), try db.encode(error), retry?.sql ?? .null, jobID.sql])
+                try record(.remoteCheck, context: context(job, runID: runID, resource: resourceID), severity: exhausted ? .error : .warning,
+                    decision: exhausted ? .skip : .reconcile, from: job.state, to: next, failure: error)
                 if retry != nil { try record(.retryScheduled, context: context(job, runID: runID), decision: .reconcile) }
             case .destinationBlocked(let error, let resumeAt):
                 try storeFailure(error, job: job)
@@ -220,7 +223,7 @@ extension Ledger {
     }
     /// System/network/source state changed. Unchanged exhausted jobs stay exhausted.
     public func wakeWaiting(destinationID: UUID) throws {
-        try db.execute("UPDATE jobs SET state='reconciling',retry_at=NULL WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'') NOT IN ('pairingUnverified','possibleOriginalMatch')", [destinationID.sql])
+        try db.execute("UPDATE jobs SET state='reconciling',retry_at=NULL WHERE destination_id=? AND state='waiting' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'') NOT IN ('pairingUnverified','possibleOriginalMatch','commitRecoveryPending','commitRecoveryExhausted') AND NOT (COALESCE(json_extract(CAST(failure AS TEXT),'$.domain'),'')='google' AND COALESCE(json_extract(CAST(failure AS TEXT),'$.cause'),'')='outcomeUnknown')", [destinationID.sql])
     }
     /// Only an explicit user Retry creates a new three-attempt cycle. All previous
     /// attempts/failures/receipts survive. Active/uncertain transports cannot reset.
@@ -253,10 +256,11 @@ extension Ledger {
     /// Local/transient conditions get one persisted recheck deadline, consumed by
     /// the existing scheduler. User-action/account waits have no polling timer.
     private func inspectionDeadline(_ failure: SafeFailure, job: JobRecord) throws -> Date? {
-        guard failure.cause == .pairingUnverified else { return waitingDeadline(failure) }
+        let uncertainGoogle = failure.domain == .google && failure.cause == .outcomeUnknown
+        guard failure.cause == .pairingUnverified || uncertainGoogle else { return waitingDeadline(failure) }
         // Allow index/pairing propagation, then require a deliberate fallback or
         // explicit retry. Generic provider wakes cannot bypass these deadlines.
-        let count = try db.rows("SELECT COUNT(*) AS n FROM failures WHERE job_id=? AND cycle=? AND json_extract(CAST(body AS TEXT),'$.cause')='pairingUnverified'", [job.id.sql, job.cycleID.sql]).first!.int("n")
+        let count = try db.rows("SELECT COUNT(*) AS n FROM (SELECT 1 FROM failures WHERE job_id=? AND cycle=? AND json_extract(CAST(body AS TEXT),'$.cause')=? LIMIT 3)", [job.id.sql, job.cycleID.sql, .text(failure.cause.rawValue)]).first!.int("n")
         if count == 1 { return Date().addingTimeInterval(60) }
         if count == 2 { return Date().addingTimeInterval(300) }
         return nil
@@ -265,6 +269,8 @@ extension Ledger {
         // A persistent pairing mismatch needs an explicit fallback choice. Keep
         // accepted components and avoid polling the same incompatible pair.
         if failure.cause == .pairingUnverified || failure.cause == .possibleOriginalMatch { return nil }
+        if failure.cause == .commitRecoveryExhausted { return nil }
+        if failure.cause == .commitRecoveryPending { return now.addingTimeInterval(30) }
         if failure.cause == .googleIndexPending { return now.addingTimeInterval(15) }
         switch failure.category {
         case .diskFull: return now.addingTimeInterval(60)

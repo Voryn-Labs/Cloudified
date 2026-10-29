@@ -163,7 +163,7 @@ public struct TransferProgress: Sendable {
 public protocol ProviderAdapter: Sendable {
     var provider: Provider { get }
     /// Backpressure before claiming or measuring another original.
-    var canAcceptWork: Bool { get async }
+    var canAcceptWork: Bool { get async throws }
     /// The OS keeps the transfer going without the app, so the next original
     /// is worth exporting during this upload.
     var prefetchesNextOriginal: Bool { get }

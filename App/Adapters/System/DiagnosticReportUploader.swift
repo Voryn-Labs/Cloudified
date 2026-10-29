@@ -119,19 +119,30 @@ actor DiagnosticReportUploader {
             let reusedSnapshots: UInt64
         }
         var queue: QueueFacts?
+        var jobEvidence = Data()
         // Separate SQL selections reserve space for lifecycle/errors even after
         // thousands of routine successes. Freeze an upper sequence boundary;
         // deduplicate overlaps and disclose every cap instead of claiming a full
         // capture. Decoded pages and encoded report storage are strictly bounded.
         let selections: [(String, DiagnosticReportFocus?, EventOrigin?, Int, Int)] = [
-            ("lifecycle", .lifecycle, nil, 64 * 1024, 2),
-            ("failures", .failures, nil, 48 * 1024, 2),
-            ("googleRecent", nil, .google, 48 * 1024, 3),
-            ("telegramRecent", nil, .telegram, 32 * 1024, 2),
-            ("recent", nil, nil, 32 * 1024, 2)
+            ("rootCauses", .rootCauses, nil, 32 * 1024, 2),
+            ("lifecycle", .lifecycle, nil, 48 * 1024, 2),
+            ("failures", .failures, nil, 32 * 1024, 2),
+            ("googleRecent", nil, .google, 40 * 1024, 3),
+            ("telegramRecent", nil, .telegram, 24 * 1024, 2),
+            ("recent", nil, nil, 24 * 1024, 2)
         ]
         if let ledger {
             do {
+                do {
+                    jobEvidence = try await ledger.diagnosticStateJSONL(limit: 12, byteBudget: 24 * 1024)
+                    if let footer = jobEvidence.split(separator: 10).last,
+                       let coverage = try JSONSerialization.jsonObject(with: Data(footer)) as? [String: Any] {
+                        truncated = truncated || coverage["byteLimited"] as? Bool == true ||
+                            ["omittedJobs", "unreadableJobs", "unreadableCheckpointGroups"].contains { (coverage[$0] as? Int ?? 0) > 0 }
+                    }
+                }
+                catch { ledgerReadFailure = ProviderSupport.safe(error, domain: .sqlite); truncated = true }
                 let snapshot = try await ledger.snapshot()
                 let performance = await ledger.snapshotPerformance()
                 queue = QueueFacts(capturedAt: Date(), scanned: snapshot.scanned,
@@ -191,12 +202,13 @@ actor DiagnosticReportUploader {
             let fallback: [DiagnosticReportFallback]
             let queue: QueueFacts?
         }
-        var body = try encoder.encode(Header(format: 3, metadata: metadata,
+        var body = try encoder.encode(Header(format: 4, metadata: metadata,
             selectedEvents: lines.count, asOfSequence: asOfSequence, sections: sections,
             prunedEvents: prunedEvents, truncated: truncated || prunedEvents > 0,
             coverage: "Selected lifecycle, failure, separate provider and recent events; not a complete capture. Section caps and prior pruning may omit events.",
             ledgerUnavailable: ledger == nil, ledgerReadFailure: ledgerReadFailure,
             fallback: Array(fallback.suffix(50)), queue: queue)) + Data([10])
+        body.append(jobEvidence)
         for line in lines.sorted(by: { $0.sequence > $1.sequence }) { body.append(line.data) }
         guard body.count <= byteLimit else { throw CoreError.invalidContract }
         try Task.checkCancellation()

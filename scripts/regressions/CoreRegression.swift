@@ -48,6 +48,9 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try await googleRemoteIndexChecks(root: root)
+        try await googleReconciliationLimitChecks(root: root)
+        try await receiptRecoveryChecks(root: root)
+        try await diagnosticRootChecks(root: root)
         try await secondPassChecks(root: root)
         let limited = try await fixture(root, provider: .telegram)
         let delay = Date().addingTimeInterval(120)
@@ -210,6 +213,7 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
         try await nativeProtocolChecks()
         try await censusChecks(root: root)
         try await laneChecks(root: root)
+        try await admissionFailureChecks(root: root)
         try await auditBoundaryChecks(root: root)
         try await networkPolicyChecks()
         try await ownedRecoveryChecks(root: root)

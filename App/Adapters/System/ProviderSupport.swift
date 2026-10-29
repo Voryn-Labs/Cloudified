@@ -5,6 +5,7 @@ import CloudifiedCore
 struct SafeProviderFailure: Error, Sendable {
     let failure: SafeFailure
     let retryAfter: Date?
+    var commitNotSubmitted = false
 }
 enum ProviderSupport {
     static func coreCase(_ error: any Error) -> DiagnosticCoreError? {

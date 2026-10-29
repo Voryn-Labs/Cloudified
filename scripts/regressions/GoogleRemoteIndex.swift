@@ -77,6 +77,30 @@ func googleRemoteIndexChecks(root: URL) async throws {
     check(deleted.rows == 0 && deleted.payloadBytes == 0, "deletion failed to release indexed storage budget")
     print("PASS remote index: pagination/restart, repeated cursors, scoped consent, quality, collision and deletion")
 
+    let invalidPages: [(Data, DiagnosticGoogleError)] = [
+        (Data(), .libraryEnvelopeInvalid),
+        (Data(repeating: 0, count: 4_194_305), .responseLimit),
+        (Proto.bytes(1, Proto.bytes(1, Data([255]))), .libraryCursorInvalid),
+        (Proto.bytes(1, (0..<5001).reduce(Data()) { data, _ in data + Proto.bytes(2, Data()) }), .libraryPageLimit)
+    ]
+    for (data, reason) in invalidPages {
+        do { _ = try GoogleLibraryWire.page(data); preconditionFailure("invalid metadata accepted") }
+        catch let failure as GoogleLibraryWire.Failure { check(failure.reason == reason, "metadata failure lost its precise safe reason") }
+    }
+    var richBody = Proto.string(6, "rich-sync")
+    let padding = Proto.bytes(40, Data(repeating: 1, count: 1800))
+    for i in 0..<1000 { richBody += Proto.bytes(2, mediaRecord(key: "rich-\(i)", name: "IMG_\(i).HEIC") + padding) }
+    let richData = Proto.bytes(1, richBody)
+    check(richData.count > 1_048_576 && richData.count < 4_194_304, "rich metadata did not reproduce the old shared HTTP cap")
+    let richPage = try GoogleLibraryWire.page(richData)
+    check(richPage.items.count == 1000 && richPage.skipped == 0, "valid rich page was rejected or silently dropped")
+    let richFolder = folder.appendingPathComponent("rich")
+    try FileManager.default.createDirectory(at: richFolder, withIntermediateDirectories: true)
+    let richIndex = try GoogleRemoteIndex(url: richFolder.appendingPathComponent("google-metadata.sqlite"))
+    let richCursor = try await richIndex.bind(scope)
+    let richComplete = try await richIndex.apply(richPage, expected: richCursor)
+    check(richComplete.complete && richComplete.rows == 1000, "rich metadata failed at the cache boundary")
+    print("PASS rich metadata: valid page above 1 MiB parses and indexes within the separate 4 MiB budget")
     let encoded = mediaRecord(key: "key", name: "IMG_0001.HEIC")
     let tombstone = Proto.bytes(1, Proto.int(1, 1) + Proto.bytes(2, Proto.string(1, "old-key")))
     let page = try GoogleLibraryWire.page(Proto.bytes(1, Proto.string(6, "sync") + Proto.bytes(2, encoded) + Proto.bytes(2, Data([255])) + Proto.bytes(9, tombstone)))
@@ -157,4 +181,293 @@ func googleRemoteIndexChecks(root: URL) async throws {
         "disposable cache corruption became a destination gate")
     check(await damaged.catalog == nil, "failed optional cache retained a per-file error loop")
     print("PASS matching isolation: candidate leaves queue moving, manual consent, endpoint cooldown and legacy fallback")
+}
+
+func googleReconciliationLimitChecks(root: URL) async throws {
+    let f = try await fixture(root)
+    let checkpoint = ProviderCheckpoint(destinationID: f.destination.id, tag: f.resource.tag,
+        transferID: UUID(), jobID: f.jobID, phase: .uncertain, inputsTerminal: true, payload: Data("protected-legacy".utf8))
+    try await f.ledger.saveProviderCheckpoint(checkpoint)
+    var now = Date()
+    for index in 0..<3 {
+        let job = try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID(), now: now)!
+        try await f.ledger.applyPresence(.unknown(SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown)),
+            jobID: job.id, resourceID: f.resource.id, runID: UUID())
+        let waiting = try await f.ledger.job(job.id)
+        try await f.ledger.wakeWaiting(destinationID: f.destination.id)
+        try await f.ledger.unblockDestination(f.destination.id)
+        let afterWake = try await f.ledger.job(job.id)
+        check(afterWake.state == .waiting && afterWake.retryAt == waiting.retryAt, "generic wake bypassed Google verification delay/cap")
+        if index < 2 {
+            check(waiting.retryAt != nil, "verification lost bounded retry timer")
+            check(try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID(), now: Date()) == nil,
+                "verification ran before its persisted deadline")
+            now = waiting.retryAt!.addingTimeInterval(1)
+        } else {
+            check(waiting.retryAt == nil, "three failed verifications still schedule endless polling")
+            check(try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID(), now: now.addingTimeInterval(86400)) == nil,
+                "time bypassed the explicit-review quarantine")
+        }
+    }
+    let databaseURL = try await f.ledger.reconciliationProbeURL()
+    let reopened = try Ledger(databaseURL: databaseURL, version: "offline", revision: "unknown")
+    try await reopened.completeDestinationRecovery(f.destination.id)
+    try await reopened.unblockDestination(f.destination.id)
+    check(try await reopened.claimNext(destinationID: f.destination.id, runID: UUID(), now: Date().addingTimeInterval(86400)) == nil,
+        "process restart bypassed verification quarantine")
+    let scan = try await f.ledger.beginScan()
+    let assets = try await f.ledger.registerAssets([f.asset, AssetIdentity(localIdentifier: "unrelated-ready-file",
+        generation: String(repeating: "e", count: 64), kind: .photo)], scanID: scan)
+    try await f.ledger.completeScan(scan)
+    let content = OriginalContent(sha256: String(repeating: "e", count: 64), sha1: String(repeating: "d", count: 40), byteCount: 9, role: .still)
+    let resource = try ContentIdentity.resource(role: .still, originals: [content])
+    let other = try await f.ledger.enqueue(assetID: assets[1].id, destinationID: f.destination.id,
+        plan: ContentIdentity.plan(policyVersion: "independent", resources: [resource]))
+    let ready = try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID())!
+    check(ready.id == other, "quarantined Google file blocked unrelated ready work")
+    try await f.ledger.applyPresence(.unknown(SafeFailure(.sourceUnavailable, domain: .photos, cause: .sourceMissing)),
+        jobID: ready.id, resourceID: resource.id, runID: UUID())
+    try await f.ledger.explicitRetry(jobID: f.jobID)
+    let retry = try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID())
+    check(retry?.id == f.jobID, "explicit user review could not recheck the held item")
+    let preserved = try await f.ledger.providerCheckpoint(destinationID: f.destination.id, tag: f.resource.tag)
+    check(preserved?.transferID == checkpoint.transferID && preserved?.phase == .uncertain && preserved?.payload == checkpoint.payload,
+        "manual verification erased legacy uncertain acceptance evidence")
+    print("PASS Google reconciliation cap: persisted deadlines, three checks, generic wake immunity and explicit verification without resend proof loss")
+}
+
+private extension Ledger {
+    func reconciliationProbeURL() throws -> URL {
+        guard let row = try db.rows("PRAGMA database_list").first else { throw ProbeError.rollback }
+        return URL(fileURLWithPath: try row.string("file"))
+    }
+}
+
+actor ReceiptRecoveryBoundary {
+    enum Result { case accepted, timeout, empty, authentication }
+    var result: Result
+    let ledger: Ledger
+    let destination: Destination
+    let resource: ResourceRequirement
+    var hashKey: String?
+    var requests = 0
+    init(_ f: Fixture, result: Result) { ledger=f.ledger; destination=f.destination; resource=f.resource; self.result=result }
+    func use(_ result: Result) { self.result=result }
+    func find(_ key: String) { hashKey=key }
+    func calls() -> Int { requests }
+    func checkPresence(sha1: Data, asLivePhotoMotion: Bool) -> String? { hashKey }
+    func commit(prepared: PreparedUpload, useQuota: Bool, saver: Bool, pairedStillHash: Data?,
+                phase: @escaping @Sendable (UploadPhase) -> Void, context: EventContext? = nil) async throws -> (mediaKey: String, unused: Bool) {
+        check(!useQuota && !saver && prepared.receipt != nil, "receipt recovery changed original/nonquota mode")
+        let checkpoint = try await ledger.providerCheckpoint(destinationID: destination.id, tag: resource.tag)
+        check(checkpoint?.phase == .committing, "receipt replay started without durable acceptance fence")
+        requests += 1
+        switch result {
+        case .accepted: return ("verified-google-key", false)
+        case .empty: return ("", false)
+        case .timeout: throw SafeFailure(.timeout, domain: .google, cause: .deadlineExceeded)
+        case .authentication: throw SafeProviderFailure(failure: SafeFailure(.authentication, domain: .google, cause: .loginRequired), retryAfter: nil)
+        }
+    }
+}
+func receiptRecoveryChecks(root: URL) async throws {
+    func install(_ f: Fixture, phase: ProviderCheckpointPhase = .uncertain, commitIndex: Int? = 0) async throws -> ProviderCheckpoint {
+        let prepared = PreparedUpload(uploadURL: URL(string: "https://photos.googleapis.com/data/upload/uploadmedia/interactive?upload_id=fixture")!,
+            hash: try ProviderSupport.hex(f.resource.originals[0].sha1, count: 20), filename: "fixture.heic", modified: Date(), byteCount: 3,
+            receipt: Proto.string(2, "existing-upload-token"))
+        struct LegacyState: Codable { let prepared: [PreparedUpload?]; let mediaKeys: [String?]; let commitIndex: Int?; let didUpload: Bool }
+        let state = LegacyState(prepared: [prepared], mediaKeys: [nil], commitIndex: commitIndex, didUpload: true)
+        let checkpoint = ProviderCheckpoint(destinationID: f.destination.id, tag: f.resource.tag, transferID: UUID(), jobID: f.jobID,
+            phase: phase, inputsTerminal: true, payload: try JSONEncoder().encode(state))
+        try await f.ledger.saveProviderCheckpoint(checkpoint)
+        return checkpoint
+    }
+    let accepted = try await fixture(root)
+    _ = try await install(accepted)
+    let server = ReceiptRecoveryBoundary(accepted, result: .accepted)
+    let adapter = ReceiptRecoveryHarness(accepted.ledger, server)
+    let result = await adapter.inspect(destination: accepted.destination, resource: accepted.resource)
+    guard case .present = result else { preconditionFailure("saved receipt could not finish the stuck legacy upload") }
+    check(try await accepted.ledger.snapshot().providers[0].confirmed == 0, "request alone fabricated Saved before Core confirmation")
+    _ = try await accepted.ledger.claimNext(destinationID: accepted.destination.id, runID: UUID())
+    try await accepted.ledger.applyPresence(result, jobID: accepted.jobID, resourceID: accepted.resource.id, runID: UUID())
+    check(try await accepted.ledger.snapshot().providers[0].confirmed == 1, "real commit key did not confirm the original")
+    check(await server.calls() == 1, "receipt recovery repeated successful finalization")
+
+    let failed = try await fixture(root)
+    let old = try await install(failed)
+    let rejectedServer = ReceiptRecoveryBoundary(failed, result: .empty)
+    let rejectedAdapter = ReceiptRecoveryHarness(failed.ledger, rejectedServer)
+    for _ in 0..<2 {
+        let value = await rejectedAdapter.inspect(destination: failed.destination, resource: failed.resource)
+        guard case .unknown = value else { preconditionFailure("empty Google key fabricated Saved") }
+    }
+    let exhausted = await rejectedAdapter.inspect(destination: failed.destination, resource: failed.resource)
+    guard case .unknown(let error) = exhausted else { preconditionFailure("failed commit counted as saved") }
+    let failedCalls = await rejectedServer.calls()
+    check(error.cause == .commitRecoveryExhausted && failedCalls == 2, "legacy original plus recovery exceeded three submissions")
+    _ = try await failed.ledger.claimNext(destinationID: failed.destination.id, runID: UUID())
+    try await failed.ledger.applyPresence(exhausted, jobID: failed.jobID, resourceID: failed.resource.id, runID: UUID())
+    let counts = try await failed.ledger.snapshot().providers[0]
+    check(counts.confirmed == 0 && counts.photos?.failed == 1, "exhausted commit did not remain visibly failed/unconfirmed")
+    let restarted = ReceiptRecoveryHarness(failed.ledger, rejectedServer)
+    _ = await restarted.inspect(destination: failed.destination, resource: failed.resource)
+    check(await rejectedServer.calls() == 2, "restart reset the persistent finalization budget")
+    let checkpoint = try await failed.ledger.providerCheckpoint(destinationID: failed.destination.id, tag: failed.resource.tag)
+    check(checkpoint?.phase == .uncertain && checkpoint?.transferID == old.transferID, "failed recovery erased uncertain evidence")
+    try await restarted.resetFinalizationBudget(jobID: failed.jobID, destination: failed.destination)
+    await rejectedServer.use(.accepted)
+    let retried = await restarted.inspect(destination: failed.destination, resource: failed.resource)
+    guard case .present = retried else { preconditionFailure("explicit receipt retry could not recover") }
+    let ready = try await fixture(root)
+    _ = try await install(ready, phase: .rejected, commitIndex: nil)
+    let readyServer = ReceiptRecoveryBoundary(ready, result: .accepted)
+    let readyAdapter = ReceiptRecoveryHarness(ready.ledger, readyServer)
+    let readyResult = await readyAdapter.inspect(destination: ready.destination, resource: ready.resource)
+    guard case .present = readyResult else { preconditionFailure("never-submitted receipt was replaced by another media upload") }
+    check(await readyServer.calls() == 1, "receipt-ready checkpoint was not finalized directly")
+
+    let scan = try await failed.ledger.beginScan()
+    let assets = try await failed.ledger.registerAssets([failed.asset, AssetIdentity(localIdentifier: "healthy-after-finalization-error",
+        generation: String(repeating: "e", count: 64), kind: .photo)], scanID: scan)
+    try await failed.ledger.completeScan(scan)
+    let healthyOriginal = OriginalContent(sha256: String(repeating: "e", count: 64), sha1: String(repeating: "e", count: 40), byteCount: 9, role: .still)
+    let healthyResource = try ContentIdentity.resource(role: .still, originals: [healthyOriginal])
+    let healthy = try await failed.ledger.enqueue(assetID: assets[1].id, destinationID: failed.destination.id,
+        plan: ContentIdentity.plan(policyVersion: "independent", resources: [healthyResource]))
+    check(try await failed.ledger.claimNext(destinationID: failed.destination.id, runID: UUID())?.id == healthy,
+        "failed finalization stopped the next Google item")
+
+    let preflight = try await fixture(root)
+    let beforeLookup = try await install(preflight)
+    let preflightServer = ReceiptRecoveryBoundary(preflight, result: .accepted)
+    let preflightAdapter = ReceiptRecoveryHarness(preflight.ledger, preflightServer)
+    await preflightAdapter.failContextLookup()
+    _ = await preflightAdapter.inspect(destination: preflight.destination, resource: preflight.resource)
+    let afterLookup = try await preflight.ledger.providerCheckpoint(destinationID: preflight.destination.id, tag: preflight.resource.tag)
+    check(afterLookup?.payload == beforeLookup.payload && afterLookup?.phase == beforeLookup.phase,
+        "context lookup failure consumed finalization attempt or changed acceptance fence")
+    check(await preflightServer.calls() == 0, "failed context lookup sent finalization")
+
+    let timeout = try await fixture(root)
+    _ = try await install(timeout)
+    let timeoutServer = ReceiptRecoveryBoundary(timeout, result: .timeout)
+    let timeoutAdapter = ReceiptRecoveryHarness(timeout.ledger, timeoutServer)
+    let pending = await timeoutAdapter.inspect(destination: timeout.destination, resource: timeout.resource)
+    guard case .unknown(let pendingError) = pending else { preconditionFailure("timeout fabricated acceptance") }
+    check(pendingError.cause == .commitRecoveryPending, "retryable finalization did not schedule receipt-only recovery")
+    _ = try await timeout.ledger.claimNext(destinationID: timeout.destination.id, runID: UUID())
+    try await timeout.ledger.applyPresence(pending, jobID: timeout.jobID, resourceID: timeout.resource.id, runID: UUID())
+    let deadline = try await timeout.ledger.job(timeout.jobID).retryAt
+    try await timeout.ledger.wakeWaiting(destinationID: timeout.destination.id)
+    try await timeout.ledger.unblockDestination(timeout.destination.id)
+    let afterWake = try await timeout.ledger.job(timeout.jobID).retryAt
+    check(deadline != nil && afterWake == deadline,
+        "generic wake bypassed receipt recovery backoff")
+    await timeoutServer.use(.accepted)
+    let recovered = await timeoutAdapter.inspect(destination: timeout.destination, resource: timeout.resource)
+    guard case .present = recovered else { preconditionFailure("server recovery did not finalize the existing receipt") }
+
+    let protected = try await fixture(root)
+    let protectedCheckpoint = try await install(protected)
+    let protectedServer = ReceiptRecoveryBoundary(protected, result: .accepted)
+    let inventory = QueueInventoryBoundary()
+    await inventory.setReaders([protectedCheckpoint.transferID])
+    let protectedAdapter = ReceiptRecoveryHarness(protected.ledger, protectedServer, background: inventory)
+    _ = await protectedAdapter.inspect(destination: protected.destination, resource: protected.resource)
+    check(await protectedServer.calls() == 0, "active OS reader permitted finalization replay")
+    await inventory.setReaders([])
+    await inventory.loseJournal(protectedCheckpoint.transferID, readerActive: false)
+    _ = await protectedAdapter.inspect(destination: protected.destination, resource: protected.resource)
+    check(await protectedServer.calls() == 0, "unavailable OS inventory permitted finalization replay")
+    await inventory.repairJournal(protectedCheckpoint.transferID)
+    await protectedServer.find("existing-original-key")
+    let found = await protectedAdapter.inspect(destination: protected.destination, resource: protected.resource)
+    guard case .present = found else { preconditionFailure("exact existing original was not recognized before receipt recovery") }
+    check(await protectedServer.calls() == 0, "exact existing original triggered receipt replay")
+
+    let auth = try await fixture(root)
+    _ = try await install(auth)
+    let authServer = ReceiptRecoveryBoundary(auth, result: .authentication)
+    let authAdapter = ReceiptRecoveryHarness(auth.ledger, authServer)
+    let blocked = await authAdapter.inspect(destination: auth.destination, resource: auth.resource)
+    guard case .destinationBlocked(let authError, _) = blocked else { preconditionFailure("real account fault became an isolated file failure") }
+    check(authError.category == .authentication, "receipt recovery obscured sign-in guidance")
+    print("PASS actual receipt recovery: legacy stuck upload finalizes without a PUT; empty keys never Saved, three-call persisted cap and explicit recovery")
+}
+
+func diagnosticRootChecks(root: URL) async throws {
+    let f = try await fixture(root)
+    let failure = SafeFailure(.transfer, domain: .google, code: 500, cause: .providerRejected)
+    let owner = EventContext(origin: .google, destinationID: f.destination.id, jobID: f.jobID,
+        resourceID: f.resource.id, diagnostic: DiagnosticDetail(stage: .googleCommit, status: .failed,
+            correlationID: UUID(), httpStatus: 500, responseBytes: 7, googleStatus: 13, responseKind: .protobuf, requestSubmitted: true))
+    let serverError = GPMCError(kind: .server(500), message: "PRIVATE SERVER MESSAGE", status: GoogleStatus(Proto.int(1, 13)),
+        httpStatus: 500, responseBytes: 7, responseKind: .protobuf)
+    await GoogleTraceHarness(f.ledger).probe(owner, error: serverError)
+    _ = try await f.ledger.claimNext(destinationID: f.destination.id, runID: UUID())
+    try await f.ledger.applyPresence(.unknown(failure), jobID: f.jobID, resourceID: f.resource.id, runID: UUID())
+    try await f.ledger.saveProviderCheckpoint(ProviderCheckpoint(destinationID: f.destination.id, tag: f.resource.tag,
+        transferID: UUID(), jobID: f.jobID, phase: .uncertain, inputsTerminal: true, payload: Data("NEVER-EXPORT-PRIVATE-RECEIPT".utf8)))
+    for _ in 0..<200 {
+        try await f.ledger.appendEvent(.remoteCheck, context: EventContext(origin: .google, jobID: f.jobID),
+            decision: .reconcile, severity: .warning, failure: SafeFailure(.reconciliation, domain: .google, cause: .outcomeUnknown))
+    }
+    _ = try await f.ledger.pruneDiagnostics(byteBudget: 8000)
+    let roots = try await f.ledger.logPage(limit: 100, reportFocus: .rootCauses)
+    check(roots.events.contains { $0.failure?.code == 500 && $0.context.jobID == f.jobID }, "repeat warnings displaced the original structured Google failure")
+    let actualTrace = roots.events.first { $0.context.diagnostic?.stage == .googleCommit }?.context.diagnostic
+    check(actualTrace?.googleStatus == 13 && actualTrace?.httpStatus == 500 && actualTrace?.requestSubmitted == true,
+        "actual session trace lost Google protocol/submission evidence")
+    try await GoogleTraceHarness(f.ledger).success(owner)
+    let traceEvents = try await f.ledger.logPage(origin: .google, limit: 100)
+    check(traceEvents.events.contains { $0.context.diagnostic?.stage == .googleCommit && $0.context.diagnostic?.status == .succeeded && $0.context.diagnostic?.requestSubmitted == true }, "successful commit omitted submission proof")
+    check(traceEvents.events.filter { $0.context.diagnostic?.stage == .googleCommit && $0.context.diagnostic?.status == .failed }.count == 1, "traced duplicated or lost the original failure")
+    check(!traceEvents.events.contains { $0.context.diagnostic?.status == .started && $0.context.diagnostic?.requestSubmitted == true }, "unstarted trace claimed dispatch")
+    let evidence = try await f.ledger.diagnosticStateJSONL(limit: 12)
+    let text = String(decoding: evidence, as: UTF8.self)
+    check(text.contains("queueSnapshot") && text.contains("jobEvidence") && text.contains("firstFailure") && text.contains("500"), "report omitted current queue and original failure")
+    check(text.contains("uncertain") && text.contains("inputsTerminal"), "report omitted sanitized checkpoint phase")
+    check(!text.contains("NEVER-EXPORT") && !text.contains(Data("NEVER-EXPORT-PRIVATE-RECEIPT".utf8).base64EncodedString())
+        && !text.contains(f.asset.localIdentifier) && !text.contains(f.resource.originals[0].sha1), "state export leaked private content")
+    let output = root.appendingPathComponent(UUID().uuidString + ".jsonl")
+    try await f.ledger.exportDiagnostics(to: output)
+    check(try String(contentsOf: output, encoding: .utf8).contains("queueSnapshot"), "full diagnostic export lost queue evidence")
+    try await f.ledger.auditMalformedCheckpoint()
+    let degraded = String(decoding: try await f.ledger.diagnosticStateJSONL(limit: 12), as: UTF8.self)
+    check(degraded.contains("stateCoverage") && degraded.contains("unreadableCheckpointGroups") && !degraded.contains("PRIVATE_BAD_PHASE"), "invalid checkpoint aborted export or leaked unknown value")
+    let scan = try await f.ledger.beginScan()
+    let assets = try await f.ledger.registerAssets([f.asset] + (0..<12).map { AssetIdentity(localIdentifier: "audit-budget-\($0)", generation: String(repeating: "c", count: 64), kind: .photo) }, scanID: scan)
+    try await f.ledger.completeScan(scan)
+    for (index, asset) in assets.dropFirst().enumerated() {
+        let original = OriginalContent(sha256: String(format: "%064x", index + 1), sha1: String(format: "%040x", index + 1), byteCount: 10, role: .still)
+        let resource = try ContentIdentity.resource(role: .still, originals: [original])
+        _ = try await f.ledger.enqueue(assetID: asset.id, destinationID: f.destination.id, plan: ContentIdentity.plan(policyVersion: "audit", resources: [resource]))
+    }
+    let bounded = try await f.ledger.diagnosticStateJSONL(limit: 100, byteBudget: 4096)
+    check(bounded.count <= 4096 && String(decoding: bounded, as: UTF8.self).contains("\"byteLimited\":true"), "oversized state failed instead of truncating with coverage")
+    try await f.ledger.auditMalformedCheckpoint(raw: true)
+    check(try await f.ledger.auditTransferIndex(), "transfer lookup still uses an unindexed scan")
+    let degradedExport = root.appendingPathComponent(UUID().uuidString + ".jsonl")
+    try await f.ledger.exportDiagnostics(to: degradedExport)
+    try await f.ledger.auditInvalidState()
+    let fallbackExport = root.appendingPathComponent(UUID().uuidString + ".jsonl")
+    try await f.ledger.exportDiagnostics(to: fallbackExport)
+    let fallbackText = try String(contentsOf: fallbackExport, encoding: .utf8)
+    check(fallbackText.contains("stateUnavailable") && fallbackText.contains("googleCommit") && !fallbackText.contains("PRIVATE_BAD_STATE"),
+        "unreadable state aborted event export or leaked corrupted text")
+    print("PASS audit export: malformed checkpoint skipped explicitly; tight byte budget truncates and full export remains usable")
+    print("PASS diagnostic roots: first HTTP failure survives repeat storm; bounded queue/checkpoint evidence excludes private receipts, names and hashes")
+}
+
+extension Ledger {
+    func auditMalformedCheckpoint(raw: Bool = false) throws {
+        if raw { try db.execute("UPDATE provider_checkpoints SET body=X'ff'") }
+        else { try db.execute("UPDATE provider_checkpoints SET body=json_set(CAST(body AS TEXT),'$.phase','PRIVATE_BAD_PHASE')") }
+    }
+    func auditInvalidState() throws { try db.execute("UPDATE jobs SET state='PRIVATE_BAD_STATE'") }
+    func auditTransferIndex() throws -> Bool {
+        try db.rows("EXPLAIN QUERY PLAN SELECT COUNT(*) FROM transfers WHERE job_id=?", [.text(UUID().uuidString)])
+            .contains { ((try? $0.string("detail")) ?? "").contains("transfers_job") }
+    }
 }

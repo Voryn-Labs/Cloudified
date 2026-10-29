@@ -78,7 +78,7 @@ func diagnosticPrivacyChecks(root: URL) async throws {
     let text = String(decoding: report, as: UTF8.self)
     check(!text.contains(marker) && !text.contains(destination.verifiedFingerprint),
           "public report leaked source identifiers, recipe, account scope or fingerprint")
-    check(text.contains("sourceMissing") && text.contains("selectedEvents"),
+    check(text.contains("sourceMissing") && text.contains("selectedEvents") && text.contains("queueSnapshot") && text.contains("rootCauses"),
           "privacy check removed useful failure evidence")
     check(report.count <= 256 * 1024, "public report exceeded its bounded budget")
     for line in text.split(separator: "\n") {

@@ -102,6 +102,11 @@ extension AppEnvironment {
                     scheduleRetryDeadline(retryDeadlines.values.min())
                 } catch { await report(error, provider: nil) }
             }
+            if failure.cause == .operationBusy {
+                forceRecovery.insert(provider)
+                retryDeadlines[provider] = Date().addingTimeInterval(30)
+                scheduleRetryDeadline(retryDeadlines.values.min())
+            }
             await report(error, provider: provider)
         }
         await engine.finishRecoveryAdmission(provider)

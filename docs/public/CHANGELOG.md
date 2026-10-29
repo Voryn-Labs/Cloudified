@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7 — 2026-10-29
+
+**Preview channel; stable installer feeds remain on 0.5.**
+
+- Finish interrupted Google save-to-library operations using their existing upload
+  receipts after exact-content checks. This recovery does not upload original
+  media again. Saved requires a valid Google media key or confirmed exact match.
+- Persist bounded finalization retries. Files still unconfirmed after three
+  attempts appear individually in Needs attention; other ready files continue.
+  Verify upload starts another explicit recovery cycle while preserving evidence.
+- Separate valid larger Google metadata responses from the smaller limits used
+  for other requests, while keeping memory, cache and disk use bounded.
+- Distinguish thermal/background cancellations from provider rejections and
+  associate commit failures with their file/job and retry cycle. Preserve HTTP
+  status, structured Google status and response shape/size without raw responses.
+- Preserve initial failures ahead of repeated follow-up checks. Diagnostic reports
+  include bounded queue state, uploaded versus already-present counts, first
+  failures and sanitized checkpoint/native ownership evidence.
+- Surface admission-check failures instead of silently treating them as no capacity.
+  Coalesce busy Telegram recovery and keep per-file failures independent.
+- Preserve original media, upload quality/profile, independent providers and native
+  reader safety. iOS background/thermal limits still apply; an unstructured Google
+  error may not disclose its internal cause. Receipt replay uses a private API
+  whose duplicate safety is not formally documented.
+
 ## 0.6 — 2026-10-22
 
 **Experimental prerelease. Stable installer feeds remain on 0.5.**

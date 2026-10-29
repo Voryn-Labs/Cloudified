@@ -93,7 +93,12 @@ actor TelegramProviderAdapter: ProviderAdapter {
     }
     /// Real retained native work remains visible after the Core worker stops
     /// waiting. The UI merges by transfer/job identity, never inventing Saved.
-    var canAcceptWork: Bool { get async { pending.count < 8 && streamFailure == nil } }
+    var canAcceptWork: Bool {
+        get async throws {
+            if let streamFailure { throw streamFailure }
+            return pending.count < 8
+        }
+    }
     /// Includes potential native readers only after their exact input path and
     /// durable hold have been protected, even when the message ID is unmatched.
     func inventoriedInputTransfers() -> Set<UUID> {
@@ -720,7 +725,8 @@ actor TelegramProviderAdapter: ProviderAdapter {
         }
     }
     private func recoverInputs(_ destination: Destination) async throws {
-        guard !busy else { throw CoreError.invalidTransition }; busy = true; defer { busy = false }
+        guard !busy else { throw SafeFailure(.connectivity, domain: .tdlib, cause: .operationBusy) }
+        busy = true; defer { busy = false }
         try await startConsumer(); try await verify(destination)
         guard let scope else { throw CoreError.staleMapping }
         // Recovery verifies scope and actual pending readers. Defer the expensive

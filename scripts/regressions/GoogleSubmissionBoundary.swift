@@ -187,6 +187,27 @@ func googleSubmissionChecks(root: URL) async throws {
     check(try await !lost.ledger.hasRetainedTransfers(jobID: lostJob.id), "absent OS reader with lost journal retained capacity forever")
     let lostState = try await lost.ledger.job(lostJob.id)
     check(lostState.state == .delayed && lostState.attempts == 1, "lost result fabricated success or bypassed logical attempt")
+    let prevented = try await fixture(root), preventedJob = try await start(prevented)
+    let preventedFiles = try FileLeaseStore(root: root.appendingPathComponent(UUID().uuidString), ledger: prevented.ledger)
+    let output = try await preventedFiles.beginExport(fileID: UUID())
+    try Data([1,2,3]).write(to: output.publishedURL)
+    let space = try await prevented.ledger.reserveStorage(bytes: 3, availableBytes: 2_000_000_000, transportOverhead: 0)
+    let input = try await preventedFiles.registerPublished(fileID: output.fileID, byteCount: 3, reservationID: space.id, reexportable: true)
+    try await preventedFiles.endExport(output)
+    let preventedID = UUID()
+    try await preventedFiles.hold(files: [input], transferID: preventedID, job: preventedJob, resourceID: prevented.resource.id)
+    try await preventedFiles.release(input)
+    let preventedInventory = QueueInventoryBoundary()
+    let preventedRecovery = GoogleSettlementHarness(prevented.ledger, preventedFiles, preventedInventory)
+    let preventedTransfer = try await prevented.ledger.retainedTransfers(destinationID: prevented.destination.id)[0]
+    try await preventedRecovery.install(preventedTransfer)
+    await preventedInventory.complete(preventedID)
+    await preventedRecovery.failNextCommit(notSubmitted: true)
+    _ = try await preventedRecovery.settle(prevented.destination, finalize: true)
+    let rejected = try await prevented.ledger.providerCheckpoint(destinationID: prevented.destination.id, tag: prevented.resource.tag)
+    check(rejected?.phase == .rejected, "proven never-submitted commit became an unknown acceptance loop")
+    check(try await !prevented.ledger.hasRetainedTransfers(jobID: preventedJob.id), "completed body retained a native reader after pre-submit failure")
+    print("PASS actual Google recovery: never-submitted commit remains retryable without weakening ambiguous-commit fences")
     print("PASS actual Google submission: four bounded durable jobs, no false saved/failure, protected cleanup, terminal/unknown reader gates, oversized exclusion, claim release; finite continued progress")
 }
 
@@ -195,20 +216,26 @@ private func retainedForRecovery(_ rows: [RetainedTransfer]) -> RetainedTransfer
 struct SafeProviderFailure: Error, Sendable {
     let failure: SafeFailure
     let retryAfter: Date?
+    var commitNotSubmitted = false
 }
 actor GoogleCommitBoundary {
     private var count = 0
     private var failNext = false
-    func failNextCommit() { failNext = true }
+    private var notSubmitted = false
+    func failNextCommit(notSubmitted: Bool = false) { failNext = true; self.notSubmitted = notSubmitted }
     func recoveredTransfer(_ prepared: PreparedUpload, result: FileUploadResult) throws -> PreparedUpload {
         var value = prepared; value.receipt = result.data; return value
     }
     func commit(prepared: PreparedUpload, useQuota: Bool, saver: Bool, pairedStillHash: Data?,
-                phase: @escaping @Sendable (UploadPhase) -> Void) throws -> (mediaKey: String, unused: Bool) {
+                phase: @escaping @Sendable (UploadPhase) -> Void, context: EventContext? = nil) throws -> (mediaKey: String, unused: Bool) {
         check(!useQuota && !saver && prepared.receipt != nil, "quality/storage mode changed during recovered commit")
         count += 1
         if failNext {
             failNext = false
+            if notSubmitted {
+                throw SafeProviderFailure(failure: SafeFailure(.connectivity, domain: .google, cause: .interrupted),
+                    retryAfter: nil, commitNotSubmitted: true)
+            }
             throw SafeFailure(.timeout, domain: .google, cause: .deadlineExceeded)
         }
         return ("accepted-boundary", false)

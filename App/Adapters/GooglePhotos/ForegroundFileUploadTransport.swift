@@ -11,6 +11,7 @@ final class ForegroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         let continuation: CheckedContinuation<FileUploadResult, any Error>
         let progress: @Sendable (Int64, Int64) -> Void
         var data = Data()
+        let responseLimit: Int
         var overflow = false
     }
     private let lock = NSLock()
@@ -45,12 +46,13 @@ final class ForegroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                 progress: @escaping @Sendable (Int64, Int64) -> Void) async throws -> FileUploadResult {
         try await perform(request, file: file, transferID: transferID, progress: progress)
     }
-    func requestData(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        let result = try await perform(request, file: nil, transferID: UUID(), progress: { _, _ in })
+    func requestData(_ request: URLRequest, responseLimit: Int = 1_048_576, onStart: @escaping @Sendable () -> Void = {}) async throws -> (Data, URLResponse) {
+        let result = try await perform(request, file: nil, transferID: UUID(), progress: { _, _ in }, onStart: onStart, responseLimit: responseLimit)
         return (result.data, result.response)
     }
     private func perform(_ request: URLRequest, file: URL?, transferID: UUID,
-                         progress: @escaping @Sendable (Int64, Int64) -> Void) async throws -> FileUploadResult {
+                         progress: @escaping @Sendable (Int64, Int64) -> Void, onStart: @escaping @Sendable () -> Void = {}, responseLimit: Int = 1_048_576) async throws -> FileUploadResult {
+        guard responseLimit == 1_048_576 || responseLimit == 4_194_304 else { throw CoreError.invalidContract }
         try Task.checkCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -71,8 +73,9 @@ final class ForegroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                 var bounded = request
                 if file == nil { bounded.timeoutInterval = min(request.timeoutInterval, 45) }
                 let task: URLSessionTask = file.map { owned.uploadTask(with: bounded, fromFile: $0) } ?? owned.dataTask(with: bounded)
-                operations[task.taskIdentifier] = Operation(id: transferID, task: task, continuation: continuation, progress: progress)
+                operations[task.taskIdentifier] = Operation(id: transferID, task: task, continuation: continuation, progress: progress, responseLimit: responseLimit)
                 activeSession = owned
+                onStart()
                 task.resume()
                 if Task.isCancelled { task.cancel() }
                 lock.unlock()
@@ -92,7 +95,7 @@ final class ForegroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         lock.lock()
         guard var operation = operations[dataTask.taskIdentifier], operation.task === dataTask else { lock.unlock(); return }
-        if operation.data.count + data.count > 1_048_576 { operation.overflow = true; dataTask.cancel() }
+        if operation.data.count + data.count > operation.responseLimit { operation.overflow = true; dataTask.cancel() }
         else { operation.data.append(data) }
         operations[dataTask.taskIdentifier] = operation
         lock.unlock()
@@ -104,7 +107,7 @@ final class ForegroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         if !reuseDataSession { activeSession = nil }
         lock.unlock()
         if !reuseDataSession { session.finishTasksAndInvalidate() }
-        if completed.overflow { completed.continuation.resume(throwing: GPMCError(kind: .malformed, message: "Upload response exceeded limit.")) }
+        if completed.overflow { completed.continuation.resume(throwing: GPMCError(kind: .malformed, message: "Control response exceeded limit.", googleReason: .responseLimit)) }
         else if let error {
             if (error as? URLError)?.code == .cancelled { completed.continuation.resume(throwing: CancellationError()) }
             else { completed.continuation.resume(throwing: GPMCError(kind: .transport, message: "Network transport failed.", transportFailure: ProviderSupport.safe(error, domain: .urlSession))) }

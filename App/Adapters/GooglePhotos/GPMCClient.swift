@@ -21,13 +21,24 @@ struct GoogleStatus: Equatable, Sendable {
     }
     let rawCode: Int
     let message: String?
+    let responseKind: DiagnosticResponseKind
     var code: Code? { Code(rawValue: rawCode) }
 
     init?(_ data: Data) {
-        guard !data.isEmpty, let number = try? Proto.number(1, in: data), number > 0,
-              let value = Int(exactly: number) else { return nil }
-        rawCode = value
-        message = (try? Proto.string(at: [2], in: data)) ?? nil
+        guard !data.isEmpty else { return nil }
+        if let number = try? Proto.number(1, in: data), number > 0, let value = Int(exactly: number) {
+            rawCode = value; responseKind = .protobuf
+            message = (try? Proto.string(at: [2], in: data)) ?? nil
+            return
+        }
+        let first = data.prefix(64).first { ![9, 10, 13, 32].contains($0) }
+        guard first == 123, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any], let name = error["status"] as? String else { return nil }
+        let codes = ["INVALID_ARGUMENT":3, "DEADLINE_EXCEEDED":4, "NOT_FOUND":5, "ALREADY_EXISTS":6,
+            "PERMISSION_DENIED":7, "RESOURCE_EXHAUSTED":8, "FAILED_PRECONDITION":9, "ABORTED":10,
+            "OUT_OF_RANGE":11, "UNIMPLEMENTED":12, "INTERNAL":13, "UNAVAILABLE":14, "DATA_LOSS":15, "UNAUTHENTICATED":16]
+        guard let value = codes[name] else { return nil }
+        rawCode = value; responseKind = .json; message = error["message"] as? String
     }
 
     func kind(httpStatus: Int) -> GPMCError.Kind? {
@@ -40,6 +51,14 @@ struct GoogleStatus: Equatable, Sendable {
             return nil
         }
     }
+}
+
+/// Current-request evidence only; never reconstructed from an old checkpoint.
+final class GoogleCommitDispatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    func markSubmitted() { lock.lock(); started = true; lock.unlock() }
+    var submitted: Bool { lock.lock(); defer { lock.unlock() }; return started }
 }
 
 struct GPMCError: LocalizedError, Equatable, Sendable {
@@ -59,6 +78,10 @@ struct GPMCError: LocalizedError, Equatable, Sendable {
     let status: GoogleStatus?
     let retryAfter: Date?
     let transportFailure: SafeFailure?
+    var httpStatus: Int?
+    var responseBytes: Int?
+    var responseKind: DiagnosticResponseKind?
+    var commitNotSubmitted = false
     var diagnosticStage: DiagnosticStage? = nil
     let googleReason: DiagnosticGoogleError?
     init(kind: Kind = .malformed, message: String, status: GoogleStatus? = nil, retryAfter: Date? = nil, transportFailure: SafeFailure? = nil, googleReason: DiagnosticGoogleError? = nil) {
@@ -223,6 +246,18 @@ actor GPMCClient {
     var accountEmail: String { auth.values["Email"] ?? "" }
 
     private func checked(_ data: Data, _ response: URLResponse, operation: String = "request") throws -> (Data, HTTPURLResponse) {
+        do { return try checkedResponse(data, response, operation: operation) }
+        catch var error as GPMCError {
+            error.httpStatus = (response as? HTTPURLResponse)?.statusCode
+            error.responseBytes = data.count
+            let contentType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+            if data.isEmpty { error.responseKind = .empty }
+            else if let status = error.status { error.responseKind = status.responseKind }
+            else { error.responseKind = contentType.contains("json") ? .json : contentType.contains("html") ? .html : .other }
+            throw error
+        }
+    }
+    private func checkedResponse(_ data: Data, _ response: URLResponse, operation: String = "request") throws -> (Data, HTTPURLResponse) {
         guard let http = response as? HTTPURLResponse else { throw GPMCError(message: "Invalid server response.") }
         let identityReason = ["account verification", "token verification"].contains(operation) ? Self.identityError(data) : nil
         if http.statusCode == 401 || http.statusCode == 403 {
@@ -260,12 +295,12 @@ actor GPMCClient {
         return (data, http)
     }
 
-    private func send(_ originalRequest: URLRequest) async throws -> (Data, URLResponse) {
+    private func send(_ originalRequest: URLRequest, submission: GoogleCommitDispatch? = nil, responseLimit: Int = 1_048_576) async throws -> (Data, URLResponse) {
         try Task.checkCancellation()
         var request = originalRequest
         networkPolicy.apply(to: &request)
         do {
-            return try await httpTransport.requestData(request)
+            return try await httpTransport.requestData(request, responseLimit: responseLimit, onStart: { submission?.markSubmitted() })
         } catch let error as GPMCError {
             throw error
         } catch let error as URLError where error.code == .cancelled {
@@ -419,7 +454,7 @@ actor GPMCClient {
         return .other
     }
 
-    private func request(_ url: URL, method: String = "POST", body: Data? = nil, headers: [String: String] = [:], operation: String = "request", allowReauth: Bool = true, photosProtocolHeaders: Bool = true, timeout: TimeInterval = 120) async throws -> (Data, HTTPURLResponse) {
+    private func request(_ url: URL, method: String = "POST", body: Data? = nil, headers: [String: String] = [:], operation: String = "request", allowReauth: Bool = true, photosProtocolHeaders: Bool = true, timeout: TimeInterval = 120, submission: GoogleCommitDispatch? = nil, responseLimit: Int = 1_048_576) async throws -> (Data, HTTPURLResponse) {
         if expiry <= Date().addingTimeInterval(30) { try await authenticate() }
         // Renewed Photos credentials must be identity-verified before any RPC.
         // JSON identity calls opt out, so this cannot recurse into itself.
@@ -436,11 +471,11 @@ actor GPMCClient {
         }
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
         request.httpBody = body
-        let result = try await send(request)
+        let result = try await send(request, submission: submission, responseLimit: responseLimit)
         if allowReauth, let http = result.1 as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
             expiry = .distantPast
             return try await self.request(url, method: method, body: body, headers: headers, operation: operation,
-                                          allowReauth: false, photosProtocolHeaders: photosProtocolHeaders, timeout: timeout)
+                                          allowReauth: false, photosProtocolHeaders: photosProtocolHeaders, timeout: timeout, submission: submission, responseLimit: responseLimit)
         }
         return try checked(result.0, result.1, operation: operation)
     }
@@ -452,10 +487,10 @@ actor GPMCClient {
         "x-goog-ext-174067345-bin": "CgIIAg==",
     ]
 
-    private func rpc(_ method: String, body: Data, ext: Bool = false) async throws -> Data {
+    private func rpc(_ method: String, body: Data, ext: Bool = false, submission: GoogleCommitDispatch? = nil) async throws -> Data {
         try await request(URL(string: "https://photosdata-pa.googleapis.com/6439526531001121323/" + method)!,
                           body: body, headers: ext ? Self.extHeaders : [:],
-                          operation: method == Self.commitMethod ? "finalization" : "duplicate check").0
+                          operation: method == Self.commitMethod ? "finalization" : "duplicate check", submission: submission).0
     }
 
     func prepareVerifiedUpload(file: URL, filename: String, modified: Date?, hash: Data, byteCount: Int64,
@@ -518,10 +553,15 @@ actor GPMCClient {
     }
 
     func libraryPage(cursor: GoogleLibraryCursor, subject: String) async throws -> GoogleLibraryPage {
-        let body = try GoogleLibraryWire.request(cursor, subject: subject)
+        let body: Data
+        do { body = try GoogleLibraryWire.request(cursor, subject: subject) }
+        catch { throw GPMCError(message: "Library request is invalid.", googleReason: .libraryRequestInvalid) }
         let response = try await request(URL(string: "https://photosdata-pa.googleapis.com/6439526531001121323/18047484249733410717")!,
-            body: body, headers: Self.extHeaders, operation: "library metadata", timeout: 12)
-        return try GoogleLibraryWire.page(response.0)
+            body: body, headers: Self.extHeaders, operation: "library metadata", timeout: 12, responseLimit: 4_194_304)
+        do { return try GoogleLibraryWire.page(response.0) }
+        catch let failure as GoogleLibraryWire.Failure {
+            throw GPMCError(message: "Library response could not be decoded.", googleReason: failure.reason)
+        } catch { throw GPMCError(message: "Library response is malformed.", googleReason: .libraryEnvelopeInvalid) }
     }
 
     func remoteMediaKey(sha1 hash: Data, asLivePhotoMotion: Bool = false) async throws -> String? {
@@ -617,6 +657,21 @@ actor GPMCClient {
 
     func commit(_ prepared: PreparedUpload, useQuota: Bool, saver: Bool, pairedStillHash: Data? = nil,
                 phase: @escaping @Sendable (UploadPhase) -> Void) async throws -> UploadOutcome {
+        let submission = GoogleCommitDispatch()
+        do {
+            return try await commitReceipt(prepared, useQuota: useQuota, saver: saver,
+                pairedStillHash: pairedStillHash, phase: phase, submission: submission)
+        } catch {
+            guard !submission.submitted else { throw error }
+            var failure = (error as? GPMCError) ?? GPMCError(kind: .transport,
+                message: "Finalization did not start.", transportFailure: ProviderSupport.safe(error, domain: .google))
+            failure.commitNotSubmitted = true
+            failure.diagnosticStage = .googleCommitNotSubmitted
+            throw failure
+        }
+    }
+    private func commitReceipt(_ prepared: PreparedUpload, useQuota: Bool, saver: Bool, pairedStillHash: Data?,
+                phase: @escaping @Sendable (UploadPhase) -> Void, submission: GoogleCommitDispatch) async throws -> UploadOutcome {
         guard let receipt = prepared.receipt else {
             throw GPMCError(message: "The upload has not finished transferring yet.")
         }
@@ -631,12 +686,28 @@ actor GPMCClient {
         let device = Proto.string(3, profile.model) + Proto.string(4, "Google") + Proto.int(5, 28)
         let committed: Data
         do {
-            committed = try await rpc(Self.commitMethod, body: Proto.bytes(1, metadata) + Proto.bytes(2, device) + Proto.bytes(3, Data([1, 3])), ext: true)
+            committed = try await rpc(Self.commitMethod, body: Proto.bytes(1, metadata) + Proto.bytes(2, device) + Proto.bytes(3, Data([1, 3])), ext: true, submission: submission)
         } catch let error as GPMCError where Self.rejectsReceipt(error) {
-            throw GPMCError(kind: .invalidUploadReceipt, message: error.message, status: error.status)
+            var rejection = GPMCError(kind: .invalidUploadReceipt, message: error.message, status: error.status, googleReason: .uploadReceiptRejected)
+            rejection.httpStatus = error.httpStatus; rejection.responseBytes = error.responseBytes; rejection.responseKind = error.responseKind
+            throw rejection
         }
-        guard let key = try Proto.string(at: [1, 3, 1], in: committed) else { throw GPMCError(message: "Google rejected the upload during finalization.") }
-        return .uploaded(mediaKey: key)
+        return .uploaded(mediaKey: try Self.commitKey(committed))
+    }
+    private static func commitKey(_ data: Data) throws -> String {
+        let key: String?
+        do { key = try Proto.string(at: [1, 3, 1], in: data) }
+        catch {
+            var failure = GPMCError(message: "Google returned an invalid finalization response.", googleReason: .commitResponseInvalid)
+            failure.httpStatus = 200; failure.responseBytes = data.count; failure.responseKind = data.isEmpty ? .empty : .protobuf
+            throw failure
+        }
+        guard let key, !key.isEmpty, key.utf8.count <= 2048 else {
+            var failure = GPMCError(message: "Google did not confirm a valid media key.", googleReason: (key?.isEmpty ?? true) ? .commitKeyMissing : .commitResponseInvalid)
+            failure.httpStatus = 200; failure.responseBytes = data.count; failure.responseKind = data.isEmpty ? .empty : .protobuf
+            throw failure
+        }
+        return key
     }
 
     func forgetTransfer(_ transferID: UUID) async {

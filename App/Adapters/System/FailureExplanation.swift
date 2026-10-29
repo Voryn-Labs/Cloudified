@@ -40,8 +40,11 @@ enum FailureExplanation {
         case .backgroundRestricted: return "Background execution is unavailable. Open Cloudified to continue this backup."
         case .backgroundExpired: return "Background processing ended or was stopped from its system activity. Submitted Google files remain protected; reopen Cloudified to continue."
         case .operationBusy: return "Cloudified is finishing another account or recovery action. Try again when it finishes."
+        case .commitRecoveryPending: return "The file reached Google's upload server, but saving it to the library has not been confirmed. Cloudified is retrying only its saved receipt; the photo or video is not sent again."
+        case .commitRecoveryExhausted: return "Google did not confirm this file after three finalization attempts. It is not counted as saved. This item needs attention; other files can continue."
         case .possibleOriginalMatch: return "Google may already have this original. This file is waiting for your review; other files can continue. It has not been counted as saved."
         case .googleIndexPending: return "Checking Google's library metadata before deciding whether this original needs uploading. Other files and Telegram can continue."
+        case .outcomeUnknown where failure.domain == .google: return "Google has not confirmed this upload. Cloudified checks again with increasing delays, then holds this item for review instead of checking endlessly. Other eligible files can continue."
         case .outcomeUnknown: return "The destination has not confirmed whether this file was saved. Cloudified checks the existing upload before sending another copy."
         case .incompleteHistory: return "The destination's file history could not be fully checked. Cloudified needs a verified result before sending this file again."
         case .persistenceFailed: return "The local ledger could not persist a change. Saved status cannot be confirmed."
@@ -104,9 +107,12 @@ enum FailureExplanation {
         switch failure.cause {
         case .databaseKeyUnavailable: return "Restore the original signing identity or review Reset local Telegram connection in Settings → Telegram. If protected uploads block reset, keep the app data and share diagnostics."
         case .loginRequired, .identityUnverified, .accountChanged: return "Reconnect the correct destination in Settings."
+        case .outcomeUnknown where failure.domain == .google: return "Use Verify upload on this item to request another bounded verification cycle. This does not force a resend. If it remains unresolved, share diagnostics; keep the same account and app data."
         case .pendingSendUnmatched, .outcomeUnknown, .incompleteHistory: return "Use Verify upload with the same account and channel. If it stays waiting, upload diagnostics from Report a problem. Deleting or relinking the app does not prove the file was saved."
         case .insufficientSpace: return "Free device space, then retry this asset."
         case .permissionDenied, .sourceMissing: return "Check Photos access and availability of the original."
+        case .commitRecoveryPending: return "Receipt-only recovery runs automatically while eligible. Saved increases only after Google returns a valid media key or an exact hash check confirms the file."
+        case .commitRecoveryExhausted: return "Open this item's Verify upload action to allow another bounded receipt-only recovery cycle. Keep the same Google account and app data; this error does not prove the file is absent."
         case .possibleOriginalMatch: return "Compare the existing Google photo. Check again to repeat verification, or explicitly choose Upload original anyway if you accept a possible duplicate."
         case .googleIndexPending: return "Library checking continues in bounded pages; no photo is downloaded from Google."
         case .pairingUnverified: return "Select an explicit Google Live Photo policy."
@@ -118,6 +124,6 @@ enum FailureExplanation {
     }
     static func requiresReconciliation(_ failure: SafeFailure?) -> Bool {
         guard let failure else { return false }
-        return [.outcomeUnknown, .pendingSendUnmatched, .incompleteHistory].contains(failure.cause)
+        return [.outcomeUnknown, .pendingSendUnmatched, .incompleteHistory, .commitRecoveryPending, .commitRecoveryExhausted].contains(failure.cause)
     }
 }

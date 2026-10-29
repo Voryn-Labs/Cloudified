@@ -17,7 +17,7 @@ public enum FailureCategory: String, Codable, Sendable {
 }
 public enum ErrorDomain: String, Codable, Sendable { case photos, fileSystem, urlSession, google, tdlib, sqlite, core }
 public enum KnownCause: String, Codable, Sendable {
-    case possibleOriginalMatch, googleIndexPending
+    case possibleOriginalMatch, googleIndexPending, commitRecoveryPending, commitRecoveryExhausted
     case unknown, permissionDenied, sourceMissing, insufficientSpace, formatRejected, offline
     case deadlineExceeded, serverRateLimit, loginRequired, quotaExceeded, providerRejected
     case incompleteHistory, outcomeUnknown, interrupted, disabled, paused, contentChanged
@@ -37,9 +37,9 @@ public enum DiagnosticStage: String, Codable, Sendable {
     case telegramNetwork, telegramParameters, telegramAuthState, nativeRequest, networkPolicy
     case diagnosticExport, diagnosticUpload, backgroundContinuation, automaticBackground
     case googleTransferActive, googleTransferCompleted, googleTransferAbsent, googleTransferFailed, googleTransferQueued
-    case applicationOperation
+    case applicationOperation, workerInterruption, queueAdmission
     case googleLibrarySync, googleLibraryUnavailable, googleOriginalCandidate, googleHashMatch, googleHashMiss
-    case googleDuplicateCheck, googleUploadPreparation, googleFileTransfer, googleCommit
+    case googleDuplicateCheck, googleUploadPreparation, googleFileTransfer, googleCommit, googleCommitNotSubmitted
     case telegramCensus, telegramRecovery, telegramProtocol, telegramLocalReset, originalIntegrityCheck, startupInventory
 }
 public enum DiagnosticStatus: String, Codable, Sendable { case started, succeeded, failed, changed }
@@ -70,6 +70,8 @@ public enum DiagnosticNativeError: String, Codable, Sendable {
     case other
 }
 public enum DiagnosticGoogleError: String, Codable, Sendable {
+    case uploadReceiptRejected, commitKeyMissing, commitResponseInvalid
+    case responseLimit, libraryRequestInvalid, libraryEnvelopeInvalid, libraryPageLimit, libraryCursorInvalid
     case badAuthentication = "BadAuthentication"
     case needsBrowser = "NeedsBrowser"
     case deviceManagement = "DeviceManagementRequiredOrSyncDisabled"
@@ -102,6 +104,8 @@ public enum DiagnosticRecoveryIssue: String, Codable, Sendable {
 public enum DiagnosticCoreError: String, Codable, Sendable {
     case invalidContract, invalidTransition, recoveryRequired, staleMapping, stagedUnavailable, persistence
 }
+public enum DiagnosticResponseKind: String, Codable, Sendable { case empty, protobuf, json, html, other }
+public enum DiagnosticQueueReason: String, Codable, Sendable { case noRunnableWork, providerCapacity, recoveryPending, systemGate, paused, accountGate, cancelled }
 /// Closed stages/statuses and numeric/boolean facts only; no request/response prose.
 public struct DiagnosticDetail: Codable, Sendable {
     public let stage: DiagnosticStage
@@ -131,6 +135,10 @@ public struct DiagnosticDetail: Codable, Sendable {
     public let coreError: DiagnosticCoreError?
     public let recoveryLookup: DiagnosticRecoveryLookup?
     public let recoveryIssue: DiagnosticRecoveryIssue?
+    public let googleStatus: Int?
+    public let responseKind: DiagnosticResponseKind?
+    public let requestSubmitted: Bool?
+    public let queueReason: DiagnosticQueueReason?
     public init(stage: DiagnosticStage, status: DiagnosticStatus, correlationID: UUID,
                 nativeMethod: DiagnosticNativeMethod? = nil, httpStatus: Int? = nil,
                 responseBytes: Int? = nil, available: Bool? = nil, wifi: Bool? = nil,
@@ -143,7 +151,9 @@ public struct DiagnosticDetail: Codable, Sendable {
                 policyCause: KnownCause? = nil, items: Int? = nil, pages: Int? = nil, reused: Bool? = nil,
                 coreError: DiagnosticCoreError? = nil,
                 recoveryLookup: DiagnosticRecoveryLookup? = nil,
-                recoveryIssue: DiagnosticRecoveryIssue? = nil) {
+                recoveryIssue: DiagnosticRecoveryIssue? = nil, googleStatus: Int? = nil,
+                responseKind: DiagnosticResponseKind? = nil, requestSubmitted: Bool? = nil,
+                queueReason: DiagnosticQueueReason? = nil) {
         self.stage = stage; self.status = status; self.correlationID = correlationID
         self.nativeMethod = nativeMethod; self.httpStatus = httpStatus; self.responseBytes = responseBytes
         self.available = available; self.wifi = wifi; self.expensive = expensive; self.constrained = constrained
@@ -157,6 +167,8 @@ public struct DiagnosticDetail: Codable, Sendable {
         self.items = items; self.pages = pages; self.reused = reused
         self.coreError = coreError
         self.recoveryLookup = recoveryLookup; self.recoveryIssue = recoveryIssue
+        self.googleStatus = googleStatus; self.responseKind = responseKind
+        self.requestSubmitted = requestSubmitted; self.queueReason = queueReason
     }
 }
 
