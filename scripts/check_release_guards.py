@@ -90,9 +90,9 @@ def main():
         sys.path.insert(0, str(ROOT / 'distribution'))
         preview = load('update_source_preview', ROOT / 'distribution/update_source.py')
         preview_root = temp / 'preview'; preview_root.mkdir()
-        feed = preview_root / 'source.json'; feed.write_text('stable feed must remain byte-identical')
+        feed = preview_root / 'source.json'; feed.write_text(json.dumps({'apps': [{'bundleIdentifier': preview.BUNDLE_ID, 'versions': [{'version': '0.5', 'buildVersion': '32', 'downloadURL': 'https://example.invalid/stable.ipa', 'sha256': 'b' * 64, 'size': 122}]}]}))
         manifest = preview_root / 'manifest.json'
-        manifest.write_text(json.dumps({'channel': 'prerelease', 'stageTag': 'preview-build'}))
+        manifest.write_text(json.dumps({'channel': 'prerelease', 'stageTag': 'preview-build', 'stageURL': 'https://example.invalid/preview.ipa', 'version': '0.7', 'buildVersion': '35', 'sha256': 'a' * 64, 'size': 123, 'releaseNotes': 'Preview; downgrade unsupported.'}))
         calls = []
         with patch.object(preview, 'ROOT', preview_root), patch.object(preview, 'verify', return_value={}), \
                 patch.object(preview, 'run', side_effect=lambda *args: calls.append(args)), \
@@ -102,7 +102,9 @@ def main():
                 patch.object(preview, 'run', side_effect=lambda *args: calls.append(args)), \
                 patch.object(sys, 'argv', ['update_source.py', '--manifest', str(manifest), '--artifact-dir', str(temp), '--promote']):
             preview.main()
-        assert feed.read_text() == 'stable feed must remain byte-identical'
+        versions = json.loads(feed.read_text())['apps'][0]['versions']
+        assert versions[0]['marketingVersion'] == '0.7 Preview (35)'
+        assert versions[1] == {'version': '0.5', 'buildVersion': '32', 'downloadURL': 'https://example.invalid/stable.ipa', 'sha256': 'b' * 64, 'size': 122}
         assert len(calls) == 1 and calls[0][-2:] == ('--prerelease=true', '--latest=false')
         stats = load('download_stats_preview', ROOT / 'distribution/download_stats.py')
         releases = [{'tag_name': name, 'name': name, 'published_at': date, 'prerelease': prerelease,

@@ -131,9 +131,10 @@ guides → FAQ and the [Live Photo comparison](FAQ.md#which-live-photo-setting-s
 
 ## Trying the 0.7 preview
 
-Regular installer updates remain on stable 0.5. Download the explicitly marked
-0.7 Preview IPA from GitHub Releases if you want to try the additional Google
-metadata checks. Preserve your signing identity and container when updating.
+The same Voryn Labs source lists **Cloudified** (stable 0.5) and
+**Cloudified Preview** (0.7), like Musyn. Refresh the source in Feather and select
+the Preview card, or download its IPA from GitHub Releases. Both cards use
+`com.vorynlabs.cloudified`; preserve your signing identity and container when updating.
 
 0.7 state can contain diagnostic/error values that 0.5 and 0.6 cannot read.
 Downgrading that same container to either older version is not supported. Wait for a later stable

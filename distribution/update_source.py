@@ -64,7 +64,7 @@ def update(source, manifest, release):
         versions.append({
             'version': manifest['version'],
             'buildVersion': manifest['buildVersion'],
-            'marketingVersion': f"{manifest['version']} ({manifest['buildVersion']})",
+            'marketingVersion': f"{manifest['version']}" + (' Preview' if manifest.get('channel') == 'prerelease' else '') + f" ({manifest['buildVersion']})",
             'date': release.get('published_at') or datetime.now(timezone.utc).isoformat(timespec='seconds'),
             'localizedDescription': re.sub(r'(?m)^#{1,6} ', '', manifest['releaseNotes']).replace('**', ''),
             'downloadURL': url, 'size': manifest['size'], 'sha256': manifest['sha256'],
@@ -82,12 +82,6 @@ def main():
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     release = verify(manifest, args.artifact_dir)
-    if manifest.get('channel', 'stable') == 'prerelease':
-        if args.promote:
-            run('gh', 'release', 'edit', manifest['stageTag'], '--repo', APP_REPO,
-                '--prerelease=true', '--latest=false')
-        print('Prerelease verified; stable installer feed and latest release are preserved.')
-        return
     path = ROOT / 'source.json'
     source = json.loads(path.read_text())
     latest = update(source, manifest, release)
@@ -95,7 +89,8 @@ def main():
         if json.loads(path.read_text()) != source:
             raise ValueError('Commit the verified feed before promoting the release')
         run('gh', 'release', 'edit', manifest['stageTag'], '--repo', APP_REPO,
-            '--prerelease=false', '--latest=' + str(latest).lower())
+            '--prerelease=' + str(manifest.get('channel') == 'prerelease').lower(),
+            '--latest=' + str(latest and manifest.get('channel') != 'prerelease').lower())
     else:
         temporary = path.with_suffix('.json.tmp')
         temporary.write_text(json.dumps(source, indent=2, ensure_ascii=False) + '\n')

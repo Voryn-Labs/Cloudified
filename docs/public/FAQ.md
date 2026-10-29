@@ -82,8 +82,9 @@ copies, renamed items, missing quality or metadata and unsupported library layou
 can still evade the additional check. A Storage Saver-only candidate is not held
 as an existing original; Google still determines how an upload is stored.
 
-The preview is an explicit download from GitHub Releases. Stable installer feeds
-and the website's regular Download button stay on 0.5. Keep your signing identity
+Select Cloudified Preview in the same Voryn Labs source, or download it from
+GitHub Releases. The stable Cloudified card and regular website Download button
+stay on 0.5. Both cards use the same bundle identifier. Keep your signing identity
 and container when updating; the metadata database is separate from upload receipts.
 An in-place downgrade from 0.7 to 0.5 or 0.6 is not supported: older builds
 cannot read all its error/diagnostic values. Keep the container and update forward, or ask for rollback help without
