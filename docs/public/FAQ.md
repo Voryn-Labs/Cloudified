@@ -85,8 +85,8 @@ as an existing original; Google still determines how an upload is stored.
 The preview is an explicit download from GitHub Releases. Stable installer feeds
 and the website's regular Download button stay on 0.5. Keep your signing identity
 and container when updating; the metadata database is separate from upload receipts.
-An in-place downgrade to 0.5 is not supported: preview error/diagnostic values are
-new. Keep the container and update forward, or ask for rollback help without
+An in-place downgrade from 0.7 to 0.5 or 0.6 is not supported: older builds
+cannot read all its error/diagnostic values. Keep the container and update forward, or ask for rollback help without
 erasing protected uploads.
 
 ## Can one failed file stop every upload?

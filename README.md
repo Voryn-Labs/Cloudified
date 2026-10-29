@@ -23,11 +23,12 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
-### Experimental 0.6 preview
+### Experimental 0.7 preview
 
-The [0.6 prerelease](https://github.com/Voryn-Labs/Cloudified/releases/tag/build-39800988344) adds a bounded
-Google library metadata check for possible existing originals. Likely matches wait
-for review rather than being counted as saved. Stable installer updates stay on
+The [0.7 prerelease](https://github.com/Voryn-Labs/Cloudified/releases/tag/build-40828576876) improves
+Google receipt recovery, isolated failures and diagnostic reports. It includes
+bounded metadata checks for possible existing originals; candidates need review
+and are never counted as saved without confirmation. Stable installer updates stay on
 **0.5**. [How preview matching works](docs/public/FAQ.md#what-changes-in-the-06-preview).
 
 ### New in 0.5

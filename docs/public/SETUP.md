@@ -129,13 +129,13 @@ Key image only and Motion video only intentionally omit the other component from
 Google. Telegram keeps both regardless of this choice. See the in-app Help &
 guides → FAQ and the [Live Photo comparison](FAQ.md#which-live-photo-setting-should-i-choose).
 
-## Trying the 0.6 preview
+## Trying the 0.7 preview
 
 Regular installer updates remain on stable 0.5. Download the explicitly marked
-0.6 Preview IPA from GitHub Releases if you want to try the additional Google
+0.7 Preview IPA from GitHub Releases if you want to try the additional Google
 metadata checks. Preserve your signing identity and container when updating.
 
-Preview state can contain new diagnostic/error values that 0.5 cannot read.
-Downgrading that same container to 0.5 is not supported. Wait for a later stable
+0.7 state can contain diagnostic/error values that 0.5 and 0.6 cannot read.
+Downgrading that same container to either older version is not supported. Wait for a later stable
 release or ask for rollback help; do not erase the app to work around an unresolved
 upload. Existing receipts and protected native inputs must be retained.
