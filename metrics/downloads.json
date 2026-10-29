@@ -7,9 +7,9 @@
     "publishedAt": "2026-10-22T06:09:27Z",
     "prerelease": false,
     "assetID": 664863554,
-    "downloads": 17
+    "downloads": 19
   },
-  "total": 66,
+  "total": 78,
   "releases": [
     {
       "tag": "build-40828576876",
@@ -17,7 +17,7 @@
       "publishedAt": "2026-10-29T06:25:06Z",
       "prerelease": true,
       "assetID": 687589239,
-      "downloads": 0
+      "downloads": 5
     },
     {
       "tag": "build-39800988344",
@@ -25,7 +25,7 @@
       "publishedAt": "2026-10-22T15:08:53Z",
       "prerelease": true,
       "assetID": 666207035,
-      "downloads": 5
+      "downloads": 6
     },
     {
       "tag": "build-39731681087",
@@ -33,7 +33,7 @@
       "publishedAt": "2026-10-22T06:09:27Z",
       "prerelease": false,
       "assetID": 664863554,
-      "downloads": 17
+      "downloads": 19
     },
     {
       "tag": "build-39627332114",
@@ -41,7 +41,7 @@
       "publishedAt": "2026-10-21T15:42:47Z",
       "prerelease": false,
       "assetID": 662981533,
-      "downloads": 9
+      "downloads": 10
     },
     {
       "tag": "build-39311792832",
@@ -49,7 +49,7 @@
       "publishedAt": "2026-10-19T19:37:23Z",
       "prerelease": false,
       "assetID": 657234830,
-      "downloads": 8
+      "downloads": 9
     },
     {
       "tag": "build-39233571132",
@@ -57,7 +57,7 @@
       "publishedAt": "2026-10-19T10:15:44Z",
       "prerelease": false,
       "assetID": 655926210,
-      "downloads": 6
+      "downloads": 7
     },
     {
       "tag": "ci-run-38920202426-untested",
@@ -65,8 +65,8 @@
       "publishedAt": "2026-10-16T15:04:00Z",
       "prerelease": false,
       "assetID": 647682223,
-      "downloads": 21
+      "downloads": 22
     }
   ],
-  "collectedAt": "2026-10-29T06:29:04+00:00"
+  "collectedAt": "2026-10-29T13:13:23+00:00"
 }
