@@ -336,4 +336,4 @@ files = [out / 'ActualPlanPolicy.swift', ROOT / 'App/Adapters/PhotoLibrary/Uploa
          out / 'ActualCensus.swift', out / 'ActualResolution.swift', out / 'ActualProtocolRecovery.swift', out / 'Support.swift', out / 'Errors.swift']
 run(['swiftc', *common, '-parse-as-library', *map(str, files), '-L', str(out),
      '-lCloudifiedCore', '-lCloudifiedDiagnostics', '-o', str(out / 'regressions')])
-subprocess.run([str(out / 'regressions')], env=dict(os.environ, DYLD_LIBRARY_PATH=str(out)), check=True, timeout=60)
+subprocess.run([str(out / 'regressions')], env=dict(os.environ, DYLD_LIBRARY_PATH=str(out), NSUnbufferedIO="YES"), check=True, timeout=60)

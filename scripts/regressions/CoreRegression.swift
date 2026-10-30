@@ -1,4 +1,5 @@
 import Foundation
+import CSQLite
 @testable import CloudifiedCore
 
 func check(_ value: Bool, _ label: String) { precondition(value, label) }
@@ -44,6 +45,7 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
 }
 @main struct CoreRegression {
     static func main() async throws {
+        print("SQLite runtime: \(String(cString: sqlite3_libversion()))")
         try await authenticationRegression()
         backgroundCompletionRegression()
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
