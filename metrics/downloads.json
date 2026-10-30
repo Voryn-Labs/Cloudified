@@ -9,15 +9,23 @@
     "assetID": 664863554,
     "downloads": 21
   },
-  "total": 82,
+  "total": 87,
   "releases": [
+    {
+      "tag": "build-41044058063",
+      "name": "Cloudified 0.8 Preview",
+      "publishedAt": "2026-10-30T11:00:10Z",
+      "prerelease": true,
+      "assetID": 691827965,
+      "downloads": 4
+    },
     {
       "tag": "build-40828576876",
       "name": "Cloudified 0.7 Preview",
       "publishedAt": "2026-10-29T06:25:06Z",
       "prerelease": true,
       "assetID": 687589239,
-      "downloads": 7
+      "downloads": 8
     },
     {
       "tag": "build-39800988344",
@@ -68,5 +76,5 @@
       "downloads": 22
     }
   ],
-  "collectedAt": "2026-10-30T05:57:23+00:00"
+  "collectedAt": "2026-10-30T13:05:36+00:00"
 }
