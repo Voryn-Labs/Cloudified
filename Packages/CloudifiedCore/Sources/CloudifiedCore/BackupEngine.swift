@@ -230,7 +230,12 @@ public actor BackupEngine {
                         correlationID: UUID(), policyCause: systemGate, queueReason: systemGate != nil ? .systemGate : paused ? .paused : .cancelled)), decision: .wait) }
                 return LaneResult(provider: provider, nextWake: nil, failure: nil, requiresRecovery: transportRecovery.contains(provider))
             }
-            let failure = Self.safe(error)
+            var failure = Self.safe(error)
+            if Self.isNativeCapacity(failure, provider: provider) {
+                transportRecovery.insert(provider)
+                do { try await ledger.blockDestination(destination.id, failure: failure, resumeAt: nil) }
+                catch { failure = Self.safe(error) }
+            }
             failures[provider] = failure
             // DB failure cannot reliably log to that DB. In-memory safe failure is
             // exposed by EngineSnapshot; P5 also records it in OSLog without SQL.
@@ -240,6 +245,9 @@ public actor BackupEngine {
                     correlationID: UUID(), policyCause: systemGate)), decision: .wait, severity: .error, failure: failure) }
             return LaneResult(provider: provider, nextWake: nil, failure: failure, requiresRecovery: transportRecovery.contains(provider))
         }
+    }
+    private static func isNativeCapacity(_ failure: SafeFailure, provider: Provider) -> Bool {
+        provider == .telegram && failure.domain == .tdlib && failure.cause == .nativeCapacityExceeded
     }
     private func recordInterruption(_ job: JobRecord, resource: UUID, runID: UUID) async {
         guard Task.isCancelled else { return }
@@ -272,7 +280,10 @@ public actor BackupEngine {
             await recordInterruption(initial, resource: resource.id, runID: runID)
             try await ledger.applyPresence(presence, jobID: initial.id, resourceID: resource.id, runID: runID)
             switch presence {
-            case .unknown, .destinationBlocked: return
+            case .unknown: return
+            case .destinationBlocked(let failure, _):
+                if Self.isNativeCapacity(failure, provider: provider) { transportRecovery.insert(provider) }
+                return
             case .present, .verifiedAbsent: break
             }
         }
@@ -366,6 +377,7 @@ public actor BackupEngine {
             case .confirmed(_, let value), .failed(_, let value): ownership = value
             }
             if case .failed = outcome, case .retainedByTransport = ownership { transportRecovery.insert(provider) }
+            if case .failed(let failure, _) = outcome, Self.isNativeCapacity(failure.error, provider: provider) { transportRecovery.insert(provider) }
             if let bytes = active[provider]?.bytes,
                let failure = await ledger.appendProgress(context: EventContext(runID: runID, origin: provider.origin,
                     destinationID: job.destination.id, jobID: job.id, resourceID: resource.id,

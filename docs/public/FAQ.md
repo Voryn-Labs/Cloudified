@@ -2,7 +2,7 @@
 
 [Back to Cloudified](../../README.md)
 
-## Can I exclude an album? (0.8 preview)
+## Can I exclude an album? (preview)
 
 Pause backup → Settings → Excluded albums. Select regular user albums and turn on
 exclusion separately for Google Photos and Telegram; Save, then resume. Membership
@@ -102,9 +102,9 @@ Select Cloudified Preview in the same Voryn Labs source, or download it from
 GitHub Releases. The stable Cloudified card and regular website Download button
 stay on 0.5. Both cards use the same bundle identifier. Keep your signing identity
 and container when updating; the metadata database is separate from upload receipts.
-An in-place downgrade from0.8 to0.7 or earlier is not supported: older builds
-cannot read its schema6 database. Earlier0.7 also cannot safely downgrade to0.5/0.6. Keep the container and update forward, or ask for rollback help without
-erasing protected uploads.
+An in-place downgrade from0.81 to0.8 or earlier is not supported: older builds
+cannot read its schema7 database. Keep the container and update forward, or ask
+for rollback help without erasing protected uploads.
 
 ## Can one failed file stop every upload?
 

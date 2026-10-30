@@ -52,6 +52,7 @@ private extension Ledger {
         }
         return URL(fileURLWithPath: path)
     }
+    func setSchema6ForRegression() throws { try db.execute("PRAGMA user_version=6") }
     func schemaVersionForRegression() throws -> Int64 {
         try db.rows("PRAGMA user_version").first!.int("user_version")
     }
@@ -62,9 +63,13 @@ func albumMigrationRegression(_ root: URL) async throws {
     try await f.ledger.confirm(receipt, jobID: f.jobID, resourceID: f.resource.id)
     let url = try await f.ledger.simulateLegacySchema()
     let reopened = try Ledger(databaseURL: url, version: "0.8", revision: "unknown")
-    check(try await reopened.schemaVersionForRegression() == 6, "schema fence not advanced")
+    check(try await reopened.schemaVersionForRegression() == 7, "schema fence not advanced")
     check(try await reopened.job(f.jobID).state == .confirmed, "migration reset a confirmed job")
     check(try await reopened.receipts(for: f.jobID).first?.opaqueReference == Data([7]), "migration lost receipt bytes")
     check(try await reopened.albumExclusionRules(.google).albumIDs.isEmpty, "migration invented exclusion rules")
-    print("PASS actual v5-to-v6 reopen migration preserves confirmed jobs and exact receipt bytes")
+    try await reopened.setSchema6ForRegression()
+    let from6 = try Ledger(databaseURL: url, version: "offline", revision: "unknown")
+    check(try await from6.schemaVersionForRegression() == 7, "v6 capability fence not advanced")
+    check(try await from6.receipts(for: f.jobID).first?.opaqueReference == Data([7]), "v6 migration lost receipt")
+    print("PASS actual v5/v6-to-v7 reopen migration preserves confirmed jobs and exact receipt bytes")
 }

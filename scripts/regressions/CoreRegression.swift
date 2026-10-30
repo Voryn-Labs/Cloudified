@@ -46,11 +46,13 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
 @main struct CoreRegression {
     static func main() async throws {
         print("SQLite runtime: \(String(cString: sqlite3_libversion()))")
+        try await updateRoutingChecks()
         try await authenticationRegression()
         backgroundCompletionRegression()
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try await capacityAdmissionChecks(root)
         try await albumExclusionRegression(root)
         try await albumMigrationRegression(root)
         try manifestBoundaryChecks()

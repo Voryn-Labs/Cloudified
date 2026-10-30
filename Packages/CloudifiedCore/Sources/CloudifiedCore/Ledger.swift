@@ -127,9 +127,12 @@ public actor Ledger {
     }
     /// A provider-wide recovery rejection fences this selected mapping, not its files.
     public func blockDestination(_ id: UUID, failure: SafeFailure, resumeAt: Date?) throws {
-        guard [.authentication, .accessDenied, .quota, .rateLimit].contains(failure.category) else { throw CoreError.invalidContract }
+        let nativeCapacity = failure.category == .reconciliation && failure.domain == .tdlib && failure.cause == .nativeCapacityExceeded
+        guard [.authentication, .accessDenied, .quota, .rateLimit].contains(failure.category) || nativeCapacity else { throw CoreError.invalidContract }
+        if nativeCapacity, resumeAt != nil { throw CoreError.invalidContract }
         try transaction {
-            guard try db.rows("SELECT id FROM destinations WHERE id=? AND selected=1", [id.sql]).count == 1 else { throw CoreError.staleMapping }
+            guard let row = try db.rows("SELECT id,provider FROM destinations WHERE id=? AND selected=1", [id.sql]).first else { throw CoreError.staleMapping }
+            if nativeCapacity { guard try row.string("provider") == Provider.telegram.rawValue else { throw CoreError.invalidContract } }
             try db.execute("UPDATE destinations SET blocked=?,resume_at=?,recovered=0 WHERE id=?", [try db.encode(failure), resumeAt?.sql ?? .null, id.sql])
             try record(.recovery, context: EventContext(destinationID: id), severity: .error, decision: .wait, failure: failure)
         }

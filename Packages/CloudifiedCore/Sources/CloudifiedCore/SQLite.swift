@@ -118,8 +118,8 @@ extension Date { var sql: SQLValue { .real(timeIntervalSince1970) } }
 enum Schema {
     static func install(_ db: SQLite) throws {
         let version = try db.rows("PRAGMA user_version").first?.int("user_version") ?? 0
-        guard version <= 6 else { throw CoreError.invalidContract }
-        guard version < 6 else { return }
+        guard version <= 7 else { throw CoreError.invalidContract }
+        guard version < 7 else { return }
         try db.transaction {
             if version == 0 {
                 for statement in statements { try db.execute(statement) }
@@ -144,7 +144,8 @@ enum Schema {
             // versions must not release inputs owned by a surviving OS session.
             // Tables, receipts, attempts and checkpoints remain intact.
             for statement in exclusionStatements { try db.execute(statement) }
-            try db.execute("PRAGMA user_version=6")
+            // v7 fences new local-capacity failure/diagnostic values from older decoders.
+            try db.execute("PRAGMA user_version=7")
         }
     }
     static let exclusionStatements = [

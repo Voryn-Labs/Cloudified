@@ -55,10 +55,17 @@ actor TelegramProviderAdapter: ProviderAdapter {
     private let files: FileLeaseStore
     private let inputFiles: TelegramInputFiles
     private var mapped: Destination?
-    private var scope: Scope?
+    private let updateInterest = TelegramUpdateInterest()
+    private var scope: Scope? { didSet { updateInterest.setChatID(scope?.chatID) } }
     private var consumer: Task<Void, Never>?
     private var streamFailure: SafeFailure?
-    private var pending: [Int32: Pending] = [:]
+    private var pending: [Int32: Pending] = [:] {
+        willSet {
+            let transition = Array(pending.values) + Array(newValue.values)
+            updateInterest.setPendingFiles(transition.map { $0.state.fileID }, chatIDs: Set(transition.map { $0.state.chatID }))
+        }
+        didSet { updateInterest.setPendingFiles(pending.values.map { $0.state.fileID }, chatIDs: Set(pending.values.map { $0.state.chatID })) }
+    }
     private var nextSendingID: Int32 = 1
     private var busy = false
     private var epoch: UUID?
@@ -111,7 +118,9 @@ actor TelegramProviderAdapter: ProviderAdapter {
     /// database, staged originals, checkpoints or transport holds.
     func restartAfterProtocolFailure() async throws {
         guard !busy, protocolRestarts == 0, await client.restartableProtocolFailure else {
-            if let streamFailure { throw streamFailure }; throw CoreError.recoveryRequired
+            if let streamFailure { throw streamFailure }
+            if let failure = await client.inputFailure { throw failure }
+            throw CoreError.recoveryRequired
         }
         busy = true; defer { busy = false }
         protocolRestarts += 1
@@ -134,17 +143,19 @@ actor TelegramProviderAdapter: ProviderAdapter {
     }
     func mapVerifiedChannel(chatID: Int64) async throws -> Destination {
         guard !busy, pending.isEmpty else { throw CoreError.invalidTransition }; busy = true; defer { busy = false }
-        try await startConsumer()
         let verified = try await verifyChannel(chatID)
         let body = try ProviderSupport.canonical(verified)
         let destination = try await ledger.selectDestination(Destination(provider: .telegram, verifiedFingerprint: ProviderSupport.fingerprint(body)))
         try await ledger.bindProviderProfile(destination: destination, profileID: client.profileID, scope: body)
         mapped = destination; scope = verified; epoch = nil; absenceCurrent = false
+        try await startConsumer()
         return destination
     }
     private func verifyChannel(_ chatID: Int64) async throws -> Scope {
         guard await client.authorizationState == .ready, !(await client.requiresReconciliation), streamFailure == nil else {
-            throw streamFailure ?? SafeFailure(.authentication, domain: .tdlib, cause: .loginRequired)
+            if let streamFailure { throw streamFailure }
+            if let failure = await client.inputFailure { throw failure }
+            throw SafeFailure(.authentication, domain: .tdlib, cause: .loginRequired)
         }
         guard await client.connectionReady else { throw SafeFailure(.connectivity, domain: .tdlib, cause: .offline) }
         let me = try await client.getMe()
@@ -179,10 +190,11 @@ actor TelegramProviderAdapter: ProviderAdapter {
     }
     private func startConsumer() async throws {
         if consumer != nil { guard streamFailure == nil else { throw streamFailure! }; return }
+        let interest = updateInterest
         let updates = try await client.updates(types: [
             "updateNewMessage", "updateMessageSendSucceeded", "updateMessageSendFailed", "updateFile",
             "updateConnectionState", "updateDeleteMessages", "updateMessageContent", "updateMessageEdited"
-        ])
+        ], accepting: { interest.accepts($0) })
         consumer = Task { [weak self] in
             do {
                 for try await update in updates { guard let self else { return }; try await self.consume(update) }
@@ -300,7 +312,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
     func inspect(destination: Destination, resource: ResourceRequirement) async -> RemotePresence {
         guard !busy else { return .unknown(incompleteHistory()) }; busy = true; defer { busy = false }
         do {
-            try await startConsumer(); try await verify(destination)
+            try await verify(destination); try await startConsumer()
             guard let scope else { throw CoreError.staleMapping }
             var staleCheckpoint: ProviderCheckpoint?
             if let checkpoint = try await ledger.providerCheckpoint(destinationID: destination.id, tag: resource.tag), checkpoint.phase == .confirmed {
@@ -418,7 +430,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
         var state: State?
         let pump = ProviderProgressPump(resourceID: resource.id, report: progress); pump.start()
         do {
-            try await startConsumer(); try await verify(job.destination)
+            try await verify(job.destination); try await startConsumer()
             guard let scope, inputs.count == 1, let input = inputs.first else { throw CoreError.invalidContract }
             if let old = try await ledger.providerCheckpoint(destinationID: job.destination.id, tag: resource.tag), old.phase != .rejected { throw CoreError.recoveryRequired }
             let filename: String
@@ -758,7 +770,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
     private func recoverInputs(_ destination: Destination) async throws {
         guard !busy else { throw SafeFailure(.connectivity, domain: .tdlib, cause: .operationBusy) }
         busy = true; defer { busy = false }
-        try await startConsumer(); try await verify(destination)
+        try await verify(destination); try await startConsumer()
         guard let scope else { throw CoreError.staleMapping }
         // Recovery verifies scope and actual pending readers. Defer the expensive
         // census until an inspection really needs absence; positives stay reusable.

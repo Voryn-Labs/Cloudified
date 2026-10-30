@@ -18,6 +18,7 @@ public enum FailureCategory: String, Codable, Sendable {
 public enum ErrorDomain: String, Codable, Sendable { case photos, fileSystem, urlSession, google, tdlib, sqlite, core }
 public enum KnownCause: String, Codable, Sendable {
     case possibleOriginalMatch, googleIndexPending, commitRecoveryPending, commitRecoveryExhausted
+    case nativeCapacityExceeded
     case unknown, permissionDenied, sourceMissing, insufficientSpace, formatRejected, offline, exclusionUnavailable
     case deadlineExceeded, serverRateLimit, loginRequired, quotaExceeded, providerRejected
     case incompleteHistory, outcomeUnknown, interrupted, disabled, paused, contentChanged
@@ -56,6 +57,7 @@ public enum DiagnosticAuthState: String, Codable, Sendable {
 }
 public enum DiagnosticNativeError: String, Codable, Sendable {
     case responseByteLimit, responseNodeLimit, responseDepthLimit, malformedNativeResponse
+    case requestCapacity, subscriberCapacity, updateQueueCapacity, fileProgressCapacity, nativeClientCapacity
     case phoneNumberInvalid = "PHONE_NUMBER_INVALID"
     case phoneNumberBanned = "PHONE_NUMBER_BANNED"
     case apiIdInvalid = "API_ID_INVALID"

@@ -16,6 +16,7 @@ enum FailureExplanation {
         }
         switch failure.cause {
         case .databaseKeyUnavailable: return "Cloudified cannot unlock its local Telegram connection data. Try the original signing identity first. Settings → Telegram offers a local connection reset only when no unresolved uploads need that data. Your uploaded channel files are unchanged."
+        case .nativeCapacityExceeded: return "Cloudified's local Telegram connection overloaded. Close Cloudified from the app switcher and reopen it to retry. Existing upload records and files stay protected; other destinations can continue."
         case .nativeResponseInvalid: return "Cloudified could not decode a Telegram response. This is a connection protocol error, not an unsupported photo format. Protected uploads require recovery before another send."
         case .nativeResponseLimit: return "A Telegram response exceeded Cloudified's decoder capacity. Existing uploads remain protected while the connection recovers. Export diagnostics if this repeats."
         case .identityUnverified: return "Google could not verify this signed-in account\(failure.code.map { " (HTTP \($0))" } ?? ""). Open Google Photos in Settings to retry verification or sign in again."
@@ -68,7 +69,7 @@ enum FailureExplanation {
     }
     static func destinationAttention(_ failure: SafeFailure) -> ProviderCardState.Attention? {
         if failure.cause == .exclusionUnavailable { return nil }
-        if [.setupUnavailable, .initializationFailed, .databaseKeyUnavailable, .nativeResponseInvalid, .nativeResponseLimit].contains(failure.cause) { return .connection }
+        if [.setupUnavailable, .initializationFailed, .databaseKeyUnavailable, .nativeResponseInvalid, .nativeResponseLimit, .nativeCapacityExceeded].contains(failure.cause) { return .connection }
         if [.photos, .fileSystem, .sqlite].contains(failure.domain) { return nil }
         if failure.cause == .loginRequired || failure.cause == .identityUnverified { return .signIn }
         switch failure.category {

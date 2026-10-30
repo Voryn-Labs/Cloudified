@@ -72,6 +72,7 @@ enum ProviderSupport {
         return SafeFailure(.transfer, domain: domain, cause: .unknown)
     }
     static func disposition(_ failure: SafeFailure) -> FailureDisposition {
+        if failure.cause == .nativeCapacityExceeded { return .providerWait }
         switch failure.category {
         case .authentication, .accessDenied, .quota, .rateLimit: return .providerWait
         case .invariant, .unsupportedOriginal, .sourceUnavailable: return .permanent
@@ -83,6 +84,7 @@ enum ProviderSupport {
     /// changes and persistence faults still require destination-level recovery.
     static func blocksDestination(_ error: any Error, domain: ErrorDomain) -> Bool {
         let failure = safe(error, domain: domain)
+        if failure.cause == .nativeCapacityExceeded { return true }
         switch failure.category {
         case .authentication, .accessDenied, .quota, .rateLimit: return true
         default: break

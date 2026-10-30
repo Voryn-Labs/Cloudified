@@ -243,3 +243,38 @@ public enum TDLibJSON {
         return nil
     }
 }
+
+/// Mirrors the provider's existing relevance guards before bounded delivery.
+/// Unknown evidence remains deliverable; this never proves input termination.
+final class TelegramUpdateInterest: @unchecked Sendable {
+    private let lock = NSLock()
+    private var chatID: Int64?
+    private var files: Set<Int32> = []
+    private var unknownFile = false
+    private var pendingChats: Set<Int64> = []
+    func setChatID(_ value: Int64?) { lock.withLock { chatID = value } }
+    func setPendingFiles(_ values: [Int32?], chatIDs: Set<Int64> = []) {
+        lock.withLock {
+            files = Set(values.compactMap { $0 }); unknownFile = values.contains { $0 == nil }
+            pendingChats = chatIDs
+        }
+    }
+    func accepts(_ update: TDLibResponse) -> Bool {
+        lock.withLock {
+            if update.type == "updateFile" {
+                guard let id = update.object(forKey: "file")?["id"]?.int32Value else { return true }
+                return unknownFile || files.contains(id)
+            }
+            let actual: Int64?
+            switch update.type {
+            case "updateNewMessage", "updateMessageSendSucceeded", "updateMessageSendFailed":
+                actual = update.object(forKey: "message")?["chat_id"]?.int64Value
+            case "updateDeleteMessages", "updateMessageContent", "updateMessageEdited":
+                actual = update["chat_id"]?.int64Value
+            default: return true
+            }
+            guard let chatID, let actual else { return true }
+            return chatID == actual || pendingChats.contains(actual)
+        }
+    }
+}

@@ -54,6 +54,7 @@ public actor TDLibClient {
         get async { await session.requiresReconciliation }
     }
 
+    var inputFailure: SafeFailure? { get async { await session.inputFailure } }
     var connectionReady: Bool { get async { await session.connectionReady } }
     var restartableProtocolFailure: Bool { get async { await session.restartableProtocolFailure } }
     func closeForProtocolRecovery() async throws {
@@ -338,8 +339,8 @@ public actor TDLibClient {
     }
 
     /// Streams raw updates from the underlying TDLib session with bounded buffering.
-    public func updates(types: Set<String>? = nil) async throws -> AsyncThrowingStream<TDLibResponse, any Error> {
-        try await session.updateStream(types: types)
+    public func updates(types: Set<String>? = nil, accepting: (@Sendable (TDLibResponse) -> Bool)? = nil) async throws -> AsyncThrowingStream<TDLibResponse, any Error> {
+        try await session.updateStream(types: types, accepting: accepting)
     }
 
     /// Closes the client and waits for native TDLib session termination.
@@ -462,6 +463,14 @@ public actor TDLibClient {
             case .depth: return .responseDepthLimit
             }
         }
+        if case TDLibError.capacityExceeded(let detail) = error {
+            if detail.hasPrefix("Pending request") { return .requestCapacity }
+            if detail.hasPrefix("Maximum subscriber") { return .subscriberCapacity }
+            if detail == "Critical update overflow." { return .updateQueueCapacity }
+            if detail == "File progress capacity exceeded." { return .fileProgressCapacity }
+            if detail == "A Telegram session still owns the native client." { return .nativeClientCapacity }
+            return .other
+        }
         if (error as? TDLibError) == .malformedResponse { return .malformedNativeResponse }
         guard case TDLibError.tdlibError(let code, let message) = error, code != 406 else { return nil }
         return DiagnosticNativeError(rawValue: message) ?? .other
@@ -483,8 +492,9 @@ public actor TDLibClient {
                 return SafeFailure(.invariant, domain: .tdlib, cause: .interrupted)
             case .timeout:
                 return SafeFailure(.timeout, domain: .tdlib, cause: .deadlineExceeded)
-            case .capacityExceeded:
-                return SafeFailure(.transfer, domain: .tdlib, cause: .providerRejected)
+            case .capacityExceeded(let detail):
+                if detail.hasPrefix("Pending request") { return SafeFailure(.connectivity, domain: .tdlib, cause: .operationBusy) }
+                return SafeFailure(.reconciliation, domain: .tdlib, cause: .nativeCapacityExceeded)
             case .malformedResponse:
                 return SafeFailure(.reconciliation, domain: .tdlib, cause: .nativeResponseInvalid)
             case .responseLimitExceeded:

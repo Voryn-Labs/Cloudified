@@ -23,16 +23,17 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
-### Experimental 0.8 preview
+### Latest preview: 0.81
 
-The [0.8 prerelease](https://github.com/Voryn-Labs/Cloudified/releases/tag/build-41044058063) adds
-separate Google/Telegram album exclusions, a calmer Keep Awake screen with dimming
-choices, and authentication/recovery fixes. It retains bounded checks for possible
-existing originals: candidates need review and never count as saved without proof.
+The [0.81 prerelease](https://github.com/Voryn-Labs/Cloudified/releases) fixes a
+Telegram local update-queue overflow that could stall uploads when unrelated
+updates crowded the bounded queue. It preserves Telegram recovery evidence and
+keeps Google uploads independent. It also includes the 0.8 album exclusions and
+Keep Awake redesign.
 Choose **Cloudified Preview** in the same Voryn Labs installer source; the stable
 **Cloudified** card stays on **0.5**. Both use the same bundle ID. Update in place
-with the same signing identity/container. **0.8 upgrades the local database;
-downgrading that container to0.7 or earlier is unsupported.**
+with the same signing identity/container. **0.81 upgrades the local database;
+do not downgrade that container to 0.8 or earlier.**
 [Preview details](docs/public/CHANGELOG.md) · [Matching limits](docs/public/FAQ.md#what-changes-in-the-06-preview).
 
 ### New in 0.5

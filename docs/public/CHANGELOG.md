@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.81 — 2026-10-30
+
+**Latest preview; stable remains0.5.**
+
+- Filter unrelated Telegram chat/file updates before the bounded native queue,
+  preventing irrelevant bursts from poisoning upload delivery. Preserve owned
+  completion/failure events, including retained uploads from an older mapping.
+- Gate a broken Telegram input stream once and request verified recovery, rather
+  than repeatedly admitting the same failed connection. Google stays independent.
+- Identify local connection-capacity failures accurately instead of calling them
+  Telegram server rejections. Record the precise capacity subtype; transient
+  request pressure remains retryable.
+- Preserve original media, upload profile, retry limits, receipts and protected
+  native files. Unknown outcomes still require verification before another send.
+
+Update in place with the same signing identity/container. This preview advances
+the database to schema7; do not downgrade its container to0.8 or earlier.
+
 ## 0.8 — 2026-10-30
 
 **Preview channel. Stable remains0.5.**
