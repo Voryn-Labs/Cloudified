@@ -129,14 +129,14 @@ Key image only and Motion video only intentionally omit the other component from
 Google. Telegram keeps both regardless of this choice. See the in-app Help &
 guides → FAQ and the [Live Photo comparison](FAQ.md#which-live-photo-setting-should-i-choose).
 
-## Trying the 0.7 preview
+## Trying the 0.8 preview
 
 The same Voryn Labs source lists **Cloudified** (stable 0.5) and
-**Cloudified Preview** (0.7), like Musyn. Refresh the source in Feather and select
+**Cloudified Preview** (0.8), like Musyn. Refresh the source in Feather and select
 the Preview card, or download its IPA from GitHub Releases. Both cards use
 `com.vorynlabs.cloudified`; preserve your signing identity and container when updating.
 
-0.7 state can contain diagnostic/error values that 0.5 and 0.6 cannot read.
-Downgrading that same container to either older version is not supported. Wait for a later stable
+0.8 upgrades the local database to schema6. Downgrading that same container to
+0.7 or earlier is not supported. Wait for a later stable
 release or ask for rollback help; do not erase the app to work around an unresolved
 upload. Existing receipts and protected native inputs must be retained.
