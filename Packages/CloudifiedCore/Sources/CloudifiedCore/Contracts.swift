@@ -176,10 +176,14 @@ public protocol ProviderAdapter: Sendable {
                 progress: @escaping @Sendable (TransferProgress) async -> Void) async -> UploadOutcome
 }
 public protocol OriginalPreparer: Sendable {
+    func mayUpload(_ job: JobRecord) async throws -> Bool
     /// Engine serializes this operation across providers. Verify identity again on
     /// re-export, publish only complete originals, return acquired leases, not bare
     /// URLs. Receipts let the final manifest reference previously confirmed parts.
     func prepare(job: JobRecord, resource: ResourceRequirement, receipts: [RemoteReceipt]) async throws -> [LeasedFile]
+}
+extension OriginalPreparer {
+    public func mayUpload(_ job: JobRecord) async throws -> Bool { true }
 }
 public enum CoreError: Error, Sendable {
     case invalidContract, invalidTransition, recoveryRequired, staleMapping, stagedUnavailable, persistence(Int32)

@@ -6,6 +6,7 @@ public struct TelegramChannelPicker: View {
     @ObservedObject private var presentation: ScreenStateStore<SettingsViewState>
     let onMapped: () -> Void
     @State private var channels: [TelegramChannel] = []
+    @State private var skipped = 0
     @State private var checked = 0
     @State private var candidateCount = 0
     @State private var hasMore = true
@@ -93,7 +94,7 @@ public struct TelegramChannelPicker: View {
                     Text(activeQuery.isEmpty ? "Recent chats" : "Search results")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(checked) of \(candidateCount) loaded candidates checked").monospacedDigit()
+                        Text("\(checked) of \(candidateCount) loaded candidates checked" + (skipped > 0 ? " · \(skipped) unavailable" : "")).monospacedDigit()
                         Text(activeQuery.isEmpty
                             ? "Recent discovery checks up to 50 main and 50 archived chats. Search by title, or enter a channel ID, for anything else."
                             : "Only private channels you own with auto-delete off are listed. Search results may be incomplete.")
@@ -143,7 +144,7 @@ public struct TelegramChannelPicker: View {
     private func restart() {
         guard isVisible, !isMapping else { return }
         activeTask?.cancel(); generation = UUID(); discovery = nil
-        channels = []; checked = 0; candidateCount = 0; hasMore = true
+        channels = []; checked = 0; skipped = 0; candidateCount = 0; hasMore = true
         selection = nil; selectionContext = nil; errorMessage = nil; retryChannelID = nil; isLoading = false
         activeQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if available { loadMore() }
@@ -152,7 +153,7 @@ public struct TelegramChannelPicker: View {
         guard isVisible, available, !isLoading, !isMapping else { return }
         retryChannelID = nil
         runRead({ try await $0.discoverMore() }) { page in
-            channels = page.channels; checked = page.checked
+            channels = page.channels; checked = page.checked; skipped = page.skipped
             candidateCount = page.candidateCount; hasMore = page.hasMore
         }
     }
@@ -188,7 +189,7 @@ public struct TelegramChannelPicker: View {
                 if let discovery {
                     let page = await discovery.snapshot()
                     guard isCurrent(id, capturedContext) else { return }
-                    channels = page.channels; checked = page.checked
+                    channels = page.channels; checked = page.checked; skipped = page.skipped
                     candidateCount = page.candidateCount; hasMore = page.hasMore
                 }
                 errorMessage = FailureExplanation.message(safe)
@@ -217,7 +218,7 @@ public struct TelegramChannelPicker: View {
             } catch is CancellationError {
                 if !Task.isCancelled && isVisible && context != capturedContext {
                     self.selection = nil; selectionContext = nil
-                    channels = []; checked = 0; candidateCount = 0; hasMore = true
+                    channels = []; checked = 0; skipped = 0; candidateCount = 0; hasMore = true
                     errorMessage = FailureExplanation.message(SafeFailure(.authentication, domain: .tdlib, cause: .accountChanged))
                 }
             }
@@ -225,7 +226,7 @@ public struct TelegramChannelPicker: View {
                 if isVisible {
                     errorMessage = FailureExplanation.message(ProviderSupport.safe(error, domain: .tdlib))
                     self.selection = nil; selectionContext = nil
-                    channels = []; checked = 0; candidateCount = 0; hasMore = true
+                    channels = []; checked = 0; skipped = 0; candidateCount = 0; hasMore = true
                 }
             }
         }

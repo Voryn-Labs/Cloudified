@@ -2,6 +2,22 @@
 
 [Back to Cloudified](../../README.md)
 
+## Can I exclude an album? (0.8 preview)
+
+Pause backup → Settings → Excluded albums. Select regular user albums and turn on
+exclusion separately for Google Photos and Telegram; Save, then resume. Membership
+in any excluded album skips the item and its components for that destination.
+The other destination has its own rules. A separate identical copy outside excluded
+albums remains eligible. Smart/shared albums are not selectable.
+
+Counts refresh during backup scans. Excluded items are separate from remaining;
+the overall progress counts destination saves (one item can require two saves).
+Rules are checked before original export and again before a new send. Already
+submitted transfers may finish. This is an upload policy, not remote deletion;
+old receipts, files and issue history remain. A deleted/inaccessible configured
+album pauses new uploads to that destination until you restore access or remove
+the rule. Limited Photos permission covers only visible media.
+
 ## Does it change photo/video quality?
 
 Uploads use original resources without recompression. Edited renders and adjustment

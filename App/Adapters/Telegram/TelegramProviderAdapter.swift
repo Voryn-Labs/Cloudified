@@ -41,6 +41,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
         var resolution: Resolution?
         var waiter: CheckedContinuation<Resolution, Never>?
         var deadline: Task<Void, Never>?
+        var rejectionCheck: Task<Void, Never>?
         var pump: ProviderProgressPump?
         var uploadedBytes: Int64 = 0
         var nativeActive = false
@@ -638,7 +639,20 @@ actor TelegramProviderAdapter: ProviderAdapter {
               message.object(forKey: "sending_state")?.type == "messageSendingStateFailed" else { throw incompleteHistory() }
         // Cancellation of the failed message's native reader may still be in
         // flight. Keep its hold and allow recovery of the other items to finish.
-        if active { return }
+        if active {
+            if pending[id]?.rejectionCheck == nil {
+                let transferID = item.checkpoint.transferID
+                pending[id]?.rejectionCheck = Task { [weak self] in
+                    for delay in [1, 2, 4, 8, 15] {
+                        do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                        guard let self else { return }
+                        if await self.recheckRejection(id, transferID: transferID, message: message, error: error) { return }
+                    }
+                    await self?.rejectionStillPending(id, transferID: transferID)
+                }
+            }
+            return
+        }
         guard let current = pending[id], !current.checkpoint.inputsTerminal,
               current.state.fileID == fileID else { return }
         let code = error?["code"]?.int32Value ?? 0
@@ -663,6 +677,22 @@ actor TelegramProviderAdapter: ProviderAdapter {
         try await ledger.wakeWaiting(destinationID: item.checkpoint.destinationID)
         eventContinuation.yield(()); statusContinuation.yield(())
         if pending[id]?.waiter == nil, pending[id]?.pump == nil { pending.removeValue(forKey: id) }
+    }
+    private func recheckRejection(_ id: Int32, transferID: UUID, message: TDLibResponse, error: TDLibResponse?) async -> Bool {
+        guard let item = pending[id], item.checkpoint.transferID == transferID,
+              !item.checkpoint.inputsTerminal else { return true }
+        do { try await reject(id, message: message, error: error) }
+        catch {
+            resolve(id, .uncertain(ProviderSupport.safe(error, domain: .tdlib)))
+            eventContinuation.yield(()); statusContinuation.yield(())
+            return true
+        }
+        return pending[id]?.checkpoint.inputsTerminal != false
+    }
+    private func rejectionStillPending(_ id: Int32, transferID: UUID) {
+        guard pending[id]?.checkpoint.transferID == transferID else { return }
+        resolve(id, .uncertain(incompleteHistory()))
+        eventContinuation.yield(()); statusContinuation.yield(())
     }
     private func persistPending(_ id: Int32, phase: ProviderCheckpointPhase, terminal: Bool, failure: UploadFailure? = nil) async throws {
         guard let item = pending[id] else { throw CoreError.invalidTransition }
@@ -705,6 +735,7 @@ actor TelegramProviderAdapter: ProviderAdapter {
             }
         }
         item.resolution = resolution; item.deadline?.cancel(); item.deadline = nil
+        item.rejectionCheck?.cancel(); item.rejectionCheck = nil
         let waiter = item.waiter; item.waiter = nil; pending[id] = item
         waiter?.resume(returning: resolution)
     }

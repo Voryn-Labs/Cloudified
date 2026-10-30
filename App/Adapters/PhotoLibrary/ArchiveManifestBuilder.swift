@@ -73,6 +73,11 @@ public enum ArchiveManifestBuilder {
         let requiredTags = Set(resources.map(\.tag))
         let references = receipts.filter { requiredTags.contains($0.tag) }.sorted { $0.tag < $1.tag }
             .map { ManifestReference(tag: $0.tag, finalReference: $0.opaqueReference) }
+        guard requiredTags.count == resources.count, references.count <= requiredTags.count,
+              Set(references.map(\.tag)).count == references.count,
+              references.allSatisfy({ !$0.finalReference.isEmpty && $0.finalReference.count <= 4096 }) else {
+            throw CoreError.invalidContract
+        }
         let data = try encoder.encode(ManifestDocument(recipe: recipe, confirmedReferences: references))
         guard data.count <= 1_048_576 else { throw CoreError.invalidContract }
         return (data, hash)

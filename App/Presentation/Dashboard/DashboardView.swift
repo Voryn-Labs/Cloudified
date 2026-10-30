@@ -12,6 +12,11 @@ public struct DashboardView: View {
 
     public init(environment: AppEnvironment) { self.environment = environment; presentation = environment.dashboardPresentation }
     private var state: DashboardViewState { presentation.value }
+    private var destinationTotals: (saved: Int, total: Int)? {
+        let enabled = [state.googleStatus, state.telegramStatus].filter { $0.isEnabled && $0.isConnected }
+        guard !enabled.isEmpty, enabled.allSatisfy({ $0.savedCount != nil && $0.totalCount != nil }) else { return nil }
+        return (enabled.compactMap(\.savedCount).reduce(0, +), enabled.compactMap(\.totalCount).reduce(0, +))
+    }
     private var providers: [ProviderCardState] { [state.googleStatus, state.telegramStatus].filter(\.isConnected) }
     private var issueSummary: String {
         let failed = providers.compactMap(\.failedCount).reduce(0, +)
@@ -26,7 +31,7 @@ public struct DashboardView: View {
                 if !state.photosAccess.canRead || state.accessibleLibraryTotal == nil { setupSection }
                 Section {
                     OverallActivityCard(title: state.summaryTitle,
-                        libraryTotal: state.accessibleLibraryTotal, savedToBoth: state.savedToBothCount,
+                        total: destinationTotals?.total, saved: destinationTotals?.saved,
                         canPause: state.canPause && state.controlsAvailable,
                         canResume: state.canResume && state.controlsAvailable && state.canStartBackup,
                         canStart: state.canStartBackup && state.controlsAvailable && !state.canPause,

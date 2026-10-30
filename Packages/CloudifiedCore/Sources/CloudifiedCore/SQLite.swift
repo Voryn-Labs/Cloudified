@@ -23,7 +23,7 @@ final class SQLite {
     private var handle: OpaquePointer?
     private(set) var snapshotRevision: UInt64 = 0
     private var updateCallbacks: UInt64 = 0
-    private static let snapshotTables: Set<String> = ["destinations", "scans", "meta", "assets", "aliases", "jobs", "obligations", "receipts", "source_failures", "transfers", "provider_checkpoints"]
+    private static let snapshotTables: Set<String> = ["destinations", "scans", "meta", "assets", "aliases", "jobs", "obligations", "receipts", "source_failures", "transfers", "provider_checkpoints", "excluded_assets", "exclusion_state"]
     init(url: URL) throws {
         let code = sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
         guard code == SQLITE_OK else { sqlite3_close(handle); handle = nil; throw CoreError.persistence(code) }
@@ -118,8 +118,8 @@ extension Date { var sql: SQLValue { .real(timeIntervalSince1970) } }
 enum Schema {
     static func install(_ db: SQLite) throws {
         let version = try db.rows("PRAGMA user_version").first?.int("user_version") ?? 0
-        guard version <= 5 else { throw CoreError.invalidContract }
-        guard version < 5 else { return }
+        guard version <= 6 else { throw CoreError.invalidContract }
+        guard version < 6 else { return }
         try db.transaction {
             if version == 0 {
                 for statement in statements { try db.execute(statement) }
@@ -143,9 +143,16 @@ enum Schema {
             // v5 is a recovery capability fence: older foreground-only app
             // versions must not release inputs owned by a surviving OS session.
             // Tables, receipts, attempts and checkpoints remain intact.
-            try db.execute("PRAGMA user_version=5")
+            for statement in exclusionStatements { try db.execute(statement) }
+            try db.execute("PRAGMA user_version=6")
         }
     }
+    static let exclusionStatements = [
+        "CREATE TABLE IF NOT EXISTS album_exclusions(provider TEXT NOT NULL,album_id TEXT NOT NULL,PRIMARY KEY(provider,album_id))",
+        "CREATE TABLE IF NOT EXISTS exclusion_state(provider TEXT PRIMARY KEY,revision INTEGER NOT NULL,pending INTEGER NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS excluded_assets(provider TEXT NOT NULL,local_id TEXT NOT NULL,PRIMARY KEY(provider,local_id))",
+        "CREATE TABLE IF NOT EXISTS exclusion_build(provider TEXT NOT NULL,local_id TEXT NOT NULL,PRIMARY KEY(provider,local_id))"
+    ]
     static let providerStatements = [
         "CREATE TABLE IF NOT EXISTS transport_reservations(id TEXT PRIMARY KEY,bytes INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS provider_bindings(destination_id TEXT PRIMARY KEY REFERENCES destinations(id),profile TEXT NOT NULL,scope BLOB NOT NULL)",

@@ -145,15 +145,23 @@ extension AppEnvironment {
                 throw SafeFailure(.accessDenied, domain: .photos, cause: .permissionDenied)
             }
             let storedScan = try await ledger.currentLibraryScan()
+            var refreshedLibrary = false
             if needsFreshScan || storedScan?.complete != true {
                 needsFreshScan = false; isScanning = true; scanProgress = nil
                 let scan = try await pipeline.scanLibrary(full: false, progress: scanProgressSink)
                 let retrySources = try await ledger.hasRetryableSourceFailures()
                 if activeScanID != scan.scanID || retrySources { planningCursors.removeAll() }
                 activeScanID = scan.scanID; isScanning = false; scanProgress = nil
+                refreshedLibrary = true
             } else { activeScanID = try await ledger.currentLibraryScan()?.id }
             try Task.checkCancellation()
             guard commandProvider == nil, epoch == planningEpoch, let scanID = activeScanID else { return }
+            for provider in Provider.allCases {
+                do {
+                    let pending = try await !ledger.exclusionReady(provider)
+                    if refreshedLibrary || pending { try await AlbumExclusionPolicy.refresh(ledger, provider: provider) }
+                } catch { await report(error, provider: provider) }
+            }
             retryDeadlines.removeAll()
             var destinations: [Destination] = [], adapters: [any ProviderAdapter] = []
             for provider in Provider.allCases {

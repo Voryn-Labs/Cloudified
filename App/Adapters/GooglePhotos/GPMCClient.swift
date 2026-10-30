@@ -217,6 +217,7 @@ actor GPMCClient {
     private let fileUploadTransport: any FileUploadTransport
     private var token = ""
     private var expiry = Date.distantPast
+    private var authenticationTask: Task<Void, any Error>?
     private var identityProof: (token: String, subject: String, until: Date)?
     private var establishedSubject: String?
     private let userAgent = "com.google.android.apps.photos/49029607 (Linux; U; Android 9; en_US; Pixel XL; Build/PQ2A.190205.001; Cronet/127.0.6510.5) (gzip)"
@@ -313,6 +314,22 @@ actor GPMCClient {
     }
 
     func authenticate() async throws {
+        try Task.checkCancellation()
+        if let authenticationTask {
+            try await authenticationTask.value
+            try Task.checkCancellation()
+            return
+        }
+        // The client owns this bounded refresh. Cancelling one RPC waiter must
+        // not cancel a refresh shared by another RPC on this same account.
+        let task = Task { try await self.refreshCredential() }
+        authenticationTask = task
+        defer { authenticationTask = nil }
+        try await task.value
+        try Task.checkCancellation()
+    }
+
+    private func refreshCredential() async throws {
         do {
         var request = URLRequest(url: URL(string: "https://android.googleapis.com/auth")!); request.httpMethod = "POST"
         request.httpBody = auth.body; request.timeoutInterval = 60
@@ -321,6 +338,11 @@ actor GPMCClient {
         request.setValue(auth.values["androidId"], forHTTPHeaderField: "device")
         request.setValue("GoogleAuth/1.4 (Pixel XL PQ2A.190205.001); gzip", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await send(request)
+        // Preserve HTTP rate/service failures before examining Android auth's
+        // textual Error field, which may otherwise look like revoked credentials.
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 && http.statusCode != 403 {
+            _ = try checked(data, response, operation: "authentication")
+        }
         var fields: [String: String] = [:]
         for line in String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline) {
             let parts = line.split(separator: "=", maxSplits: 1)
@@ -598,7 +620,7 @@ actor GPMCClient {
         let result = try await transport.upload(request, fromFile: file, transferID: transferID) { sent, expected in
             phase(.sending(sent: sent, total: expected > 0 ? expected : total))
         }
-        return try receivedTransfer(prepared, result: result)
+        return try await receivedTransfer(prepared, result: result)
     }
     func submit(_ prepared: PreparedUpload, file: URL, transferID: UUID) async throws {
         guard let transport = fileUploadTransport as? BackgroundFileUploadTransport,
@@ -608,6 +630,9 @@ actor GPMCClient {
         try transport.submit(request, fromFile: file, transferID: transferID)
     }
     private func transferRequest(_ prepared: PreparedUpload) async throws -> URLRequest {
+        guard prepared.uploadURL.scheme == "https", prepared.uploadURL.host == "photos.googleapis.com",
+              prepared.uploadURL.user == nil, prepared.uploadURL.password == nil,
+              prepared.uploadURL.port == nil || prepared.uploadURL.port == 443 else { throw CoreError.invalidContract }
         if expiry <= Date().addingTimeInterval(30) { try await authenticate() }
         _ = try await verifiedSubject()
         var request = URLRequest(url: prepared.uploadURL)
@@ -620,7 +645,20 @@ actor GPMCClient {
         networkPolicy.apply(to: &request)
         return request
     }
-    func receivedTransfer(_ prepared: PreparedUpload, result: FileUploadResult) throws -> PreparedUpload {
+    func receivedTransfer(_ prepared: PreparedUpload, result: FileUploadResult) async throws -> PreparedUpload {
+        if result.response.statusCode == 401 {
+            try await authenticate()
+            _ = try await verifiedSubject()
+            // This PUT ended without a receipt. Refreshing credentials does not
+            // upload again: the ledger's normal exact checks and attempt budget
+            // decide whether another transfer is safe. Genuine auth failures
+            // above still propagate as account-wide failures.
+            var failure = GPMCError(kind: .transport, message: "Upload access token expired; account verification succeeded.",
+                transportFailure: SafeFailure(.connectivity, domain: .google, code: 401, cause: .interrupted))
+            failure.httpStatus = 401; failure.responseBytes = result.data.count
+            failure.responseKind = result.data.isEmpty ? .empty : .other
+            throw failure
+        }
         let (receipt, _) = try checked(result.data, result.response, operation: "file transfer")
         try Self.validateReceipt(receipt)
         var completed = prepared

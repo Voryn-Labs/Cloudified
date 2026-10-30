@@ -10,6 +10,7 @@ public struct SettingsView: View {
         var id: String { rawValue }
     }
     @AppStorage("CloudifiedAppearance") private var appearance = AppAppearance.system
+    @AppStorage("CloudifiedAwakeStyle") private var awakeStyle = AwakeStyle.dim
     @State private var linkSheet: LinkSheet?
     @State private var showingGoogleDisconnectAlert = false
     @State private var showingTelegramDisconnectAlert = false
@@ -58,6 +59,9 @@ public struct SettingsView: View {
                     NavigationLink { libraryAccessSettings } label: {
                         MenuRow(title: "Photos access", symbol: "photo.badge.checkmark", subtitle: state.photosAccess.description)
                     }
+                    NavigationLink { AlbumExclusionsView(environment: environment) } label: {
+                        MenuRow(title: "Excluded albums", symbol: "rectangle.stack.badge.minus", subtitle: "Separate Google Photos and Telegram rules")
+                    }
                     NavigationLink { livePhotoSettings } label: {
                         MenuRow(title: "Live Photos", symbol: "livephoto", subtitle: state.livePhotoFallback.rawValue)
                     }
@@ -102,6 +106,9 @@ public struct SettingsView: View {
         List {
             Section { BrandHeader() }
             Section {
+                Picker("Keep Awake", selection: $awakeStyle) {
+                    ForEach(AwakeStyle.allCases) { Text($0.rawValue).tag($0) }
+                }
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
                 }.pickerStyle(.inline)

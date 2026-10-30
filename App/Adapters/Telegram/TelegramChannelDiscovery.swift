@@ -14,6 +14,7 @@ public struct TelegramChannelSelection: Sendable, Equatable {
 
 public struct TelegramChannelPage: Sendable {
     public let channels: [TelegramChannel]
+    public let skipped: Int
     public let checked: Int
     public let candidateCount: Int
     public let hasMore: Bool
@@ -25,6 +26,7 @@ public actor TelegramChannelDiscovery {
     private let client: TDLibClient
     private let query: String
     private var candidates: [Int64]?
+    private var skipped = 0
     private var cursor = 0
     private var channels: [TelegramChannel] = []
     private var accountID: Int64?
@@ -66,17 +68,27 @@ public actor TelegramChannelDiscovery {
         let end = min(ids.count, cursor + min(10, max(1, limit)))
         while cursor < end {
             let id = ids[cursor]
-            let channel = try await inspect(id)
-            try Task.checkCancellation()
-            // Commit each verified result atomically; a later failure does not lose it.
-            if let channel { channels.append(channel) }
+            do {
+                let channel = try await inspect(id)
+                try Task.checkCancellation()
+                if let channel { channels.append(channel) }
+            } catch {
+                try Task.checkCancellation()
+                let failure = ProviderSupport.safe(error, domain: .tdlib)
+                // A missing candidate or an unusable chat record is item-local.
+                // Auth, rate limits, transport and native protocol failures stop
+                // discovery with the original error, leaving this cursor intact.
+                guard failure.domain == .tdlib, failure.category == .transfer,
+                      failure.code == 404 || failure.cause == .formatRejected else { throw error }
+                skipped += 1
+            }
             cursor += 1
         }
         return snapshot()
     }
 
     public func snapshot() -> TelegramChannelPage {
-        TelegramChannelPage(channels: channels, checked: cursor,
+        TelegramChannelPage(channels: channels, skipped: skipped, checked: cursor,
             candidateCount: candidates?.count ?? 0,
             hasMore: candidates == nil || cursor < (candidates?.count ?? 0))
     }

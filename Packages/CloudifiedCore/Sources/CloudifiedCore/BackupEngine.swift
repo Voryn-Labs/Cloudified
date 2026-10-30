@@ -46,6 +46,7 @@ private actor PreparationGate {
 }
 
 public actor BackupEngine {
+    private enum AdmissionPolicyError: Error { case excluded }
     public let ledger: Ledger
     public let files: FileLeaseStore
     private let preparation = PreparationGate()
@@ -255,6 +256,12 @@ public actor BackupEngine {
                          source: (any SourceWorkProducer)?, runID: UUID) async throws {
         let provider = adapter.provider
         defer { active.removeValue(forKey: provider); progressAt.removeValue(forKey: provider) }
+        do {
+            guard try await preparer.mayUpload(initial) else { try await ledger.deferExcludedJob(initial.id); return }
+        } catch let failure as SafeFailure where failure.domain == .photos && failure.category == .sourceUnavailable {
+            try await ledger.deferPreparation(jobID: initial.id, failure: failure, permanent: true, runID: runID)
+            return
+        }
         update(initial, resource: nil, phase: .checking)
         for resource in try await ledger.missingResources(for: initial.id) {
             guard try await runnable(initial.destination.id) else {
@@ -299,6 +306,7 @@ public actor BackupEngine {
                 } else {
                     guard prepared.map(\.byteCount) == resource.originals.map(\.byteCount) else { throw CoreError.invalidContract }
                 }
+                guard try await preparer.mayUpload(job) else { throw AdmissionPolicyError.excluded }
                 guard try await runnable(job.destination.id) else { throw CancellationError() }
                 try await files.hold(files: prepared, transferID: transferID, job: job, resourceID: resource.id)
                 if !started { job = try await ledger.beginAttempt(jobID: job.id, runID: runID); started = true }
@@ -308,6 +316,13 @@ public actor BackupEngine {
                 try? await files.transportFinished(transferID)
                 try await releasePrepared(prepared)
                 if try await ledger.job(job.id).state == .confirmed { return }
+                if error is AdmissionPolicyError { try await ledger.deferExcludedJob(job.id); return }
+                if let failure = error as? SafeFailure, failure.domain == .photos, failure.category == .sourceUnavailable {
+                    if started {
+                        try await ledger.failAttempt(jobID: job.id, failure: UploadFailure(failure, disposition: .permanent, acceptance: .definitelyNotAccepted, didStartTransfer: false), runID: runID)
+                    } else { try await ledger.deferPreparation(jobID: job.id, failure: failure, permanent: true, runID: runID) }
+                    return
+                }
                 if error is CancellationError {
                     if started {
                             try await ledger.failAttempt(jobID: job.id, failure: UploadFailure(Self.safe(error), disposition: .waiting, acceptance: .definitelyNotAccepted, didStartTransfer: false), runID: runID)

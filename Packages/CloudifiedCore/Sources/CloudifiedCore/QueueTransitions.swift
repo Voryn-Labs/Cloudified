@@ -33,8 +33,9 @@ extension Ledger {
         try !db.rows("SELECT number FROM attempts WHERE job_id=? AND cycle=? AND number=? AND ended IS NULL AND suspended=1", [job.id.sql, job.cycleID.sql, .integer(Int64(job.attempts))]).isEmpty
     }
     public func canRun(_ destinationID: UUID, now: Date = Date()) throws -> Bool {
-        guard let row = try db.rows("SELECT enabled,selected,recovered,blocked,resume_at FROM destinations WHERE id=?", [destinationID.sql]).first else { return false }
-        guard row.int("enabled") == 1, row.int("selected") == 1, row.int("recovered") == 1 else { return false }
+        guard let row = try db.rows("SELECT provider,enabled,selected,recovered,blocked,resume_at FROM destinations WHERE id=?", [destinationID.sql]).first else { return false }
+        guard row.int("enabled") == 1, row.int("selected") == 1, row.int("recovered") == 1,
+              let provider = Provider(rawValue: try row.string("provider")), try exclusionReady(provider) else { return false }
         if case .blob = row.values["blocked"] {
             guard let date = row.double("resume_at"), date <= now.timeIntervalSince1970 else { return false }
         }
@@ -55,10 +56,21 @@ extension Ledger {
                 AND NOT EXISTS(SELECT 1 FROM transfers t WHERE t.job_id=j.id)
                 AND EXISTS(SELECT 1 FROM aliases x JOIN assets a ON a.id=x.asset_id
                     JOIN scans s ON s.id=a.scan_id WHERE x.job_id=j.id AND s.complete=1
-                    AND a.scan_id=(SELECT value FROM meta WHERE key='scan'))
+                    AND a.scan_id=(SELECT value FROM meta WHERE key='scan')
+                    AND NOT EXISTS(SELECT 1 FROM excluded_assets e WHERE e.provider=(SELECT provider FROM destinations WHERE id=j.destination_id) AND e.local_id=a.local_id))
                 ORDER BY j.seq LIMIT 1
                 """, [destinationID.sql, now.sql]).first,
                   let id = UUID(uuidString: try row.string("id")) else { return nil }
+            // Content aliases may have different album membership. Choose an
+            // eligible source only while no transfer owns this job's inputs.
+            guard let source = try db.rows("""
+                SELECT a.id FROM aliases x JOIN assets a ON a.id=x.asset_id
+                JOIN jobs j ON j.id=x.job_id JOIN destinations d ON d.id=j.destination_id
+                WHERE x.job_id=? AND a.scan_id=(SELECT value FROM meta WHERE key='scan')
+                AND NOT EXISTS(SELECT 1 FROM excluded_assets e WHERE e.provider=d.provider AND e.local_id=a.local_id)
+                ORDER BY (a.id=j.asset_id) DESC,a.id LIMIT 1
+                """, [id.sql]).first else { throw CoreError.invalidContract }
+            try db.execute("UPDATE jobs SET asset_id=? WHERE id=?", [.text(try source.string("id")), id.sql])
             let previous = try loadJob(id)
             try db.execute("UPDATE jobs SET state='checking',retry_at=NULL WHERE id=?", [id.sql])
             try db.execute("UPDATE obligations SET status='unknown' WHERE job_id=? AND status!='confirmed'", [id.sql])

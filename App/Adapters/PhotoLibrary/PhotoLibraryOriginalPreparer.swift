@@ -29,6 +29,10 @@ public final class PhotoLibraryOriginalPreparer: OriginalPreparer, Sendable {
         self.onDiagnosticFailure = onDiagnosticFailure
     }
 
+    public func mayUpload(_ job: JobRecord) async throws -> Bool {
+        try await AlbumExclusionPolicy.mayUpload(job.asset.localIdentifier, provider: job.destination.provider, ledger: ledger)
+    }
+
     public func prepare(
         job: JobRecord,
         resource: ResourceRequirement,

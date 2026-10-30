@@ -83,7 +83,7 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         let current = await session.allTasks
         return try lock.withLock {
             let live = Set(current.compactMap { $0.state != .completed ? $0.taskDescription.flatMap(UUID.init(uuidString:)) : nil })
-            for id in known.subtracting(live) { tasks.removeValue(forKey: id) }
+            for id in known.subtracting(live) where waiters[id] == nil { tasks.removeValue(forKey: id) }
             var result: Set<UUID> = []
             for task in current where task.state != .completed {
                 guard let text = task.taskDescription, let id = UUID(uuidString: text) else { throw CoreError.recoveryRequired }
@@ -108,7 +108,7 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
                 do { return (id, try inventoryLocked(id, current: current, newlySubmitted: !known.contains(id))) }
                 catch {
                     let reader = current.contains { $0.state != .completed && $0.taskDescription.flatMap(UUID.init(uuidString:)) == id }
-                        || (!known.contains(id) && tasks[id] != nil)
+                        || (!known.contains(id) && tasks[id] != nil) || waiters[id] != nil
                     if !reader {
                         tasks.removeValue(forKey: id)
                         waiters.removeValue(forKey: id)?.continuation.resume(throwing: error)
@@ -121,6 +121,13 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
     private func inventoryLocked(_ id: UUID, current: [URLSessionTask], newlySubmitted: Bool) throws -> Inventory {
         if let failure = persistenceFailures[id] { throw failure }
         let journal = try read(id)
+        // getAllTasks may stop listing a completed task before its delegate
+        // result is delivered. The attached operation still owns that result;
+        // inventory is not permission to fail its continuation or forget it.
+        if waiters[id] != nil, journal?.terminal != true {
+            guard let task = tasks[id] else { throw CoreError.recoveryRequired }
+            return .active(max(0, task.countOfBytesSent), max(0, task.countOfBytesExpectedToSend))
+        }
         if let task = tasks[id], current.contains(where: { $0 === task && $0.state != .completed }) || (newlySubmitted && journal?.terminal != true) {
             return .active(max(0, task.countOfBytesSent), max(0, task.countOfBytesExpectedToSend))
         }
@@ -194,7 +201,18 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
         let finish = lock.withLock { closing = true; return tasks.isEmpty }
         if finish { session.finishTasksAndInvalidate() }
     }
-    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: (any Error)?) { eventSink.finish(); progressSink.finish() }
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: (any Error)?) {
+        let detached = lock.withLock {
+            let values = Array(waiters.values)
+            waiters.removeAll(); tasks.removeAll()
+            return values
+        }
+        // Invalidation ends this session, but is not remote rejection proof.
+        let failure = error.map { ProviderSupport.safe($0, domain: .urlSession) }
+            ?? SafeFailure(.connectivity, domain: .urlSession, cause: .interrupted)
+        for waiter in detached { waiter.continuation.resume(throwing: failure) }
+        eventSink.finish(); progressSink.finish()
+    }
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         guard let text = task.taskDescription, let id = UUID(uuidString: text) else { return }
         let report = lock.withLock { waiters[id]?.progress }
@@ -252,9 +270,12 @@ final class BackgroundFileUploadTransport: NSObject, FileUploadTransport, URLSes
 
 @MainActor
 enum BackgroundSessionCompletion {
-    private static var handlers: [String: () -> Void] = [:]
-    static func store(_ id: String, completion: @escaping () -> Void) { handlers[id] = completion }
-    static func finish(_ id: String) { handlers.removeValue(forKey: id)?() }
+    private static var handlers: [String: [() -> Void]] = [:]
+    static func store(_ id: String, completion: @escaping () -> Void) { handlers[id, default: []].append(completion) }
+    static func finish(_ id: String) {
+        let completed = handlers.removeValue(forKey: id) ?? []
+        for completion in completed { completion() }
+    }
 }
 final class CloudifiedAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

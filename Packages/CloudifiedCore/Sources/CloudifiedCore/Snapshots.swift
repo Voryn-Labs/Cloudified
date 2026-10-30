@@ -7,6 +7,7 @@ public struct MediaCounts: Equatable, Sendable {
     public let alreadyPresent: Int
     public let failed: Int
     public let waiting: Int
+    public var excluded: Int = 0
     public var remaining: Int { total - confirmed }
 }
 public struct ProviderSnapshot: Sendable {
@@ -21,6 +22,7 @@ public struct ProviderSnapshot: Sendable {
     public let lastConfirmedAt: Date?
     public let retainedTransfers: Int
     public let protectedUnresolvedTransfers: Int
+    public var excluded: Int? { photos.flatMap { p in videos.map { p.excluded + $0.excluded } } }
     public var total: Int? { photos.flatMap { p in videos.map { p.total + $0.total } } }
     public var confirmed: Int? { photos.flatMap { p in videos.map { p.confirmed + $0.confirmed } } }
     public var remaining: Int? { total.flatMap { t in confirmed.map { t - $0 } } }
@@ -139,6 +141,7 @@ extension Ledger {
             SELECT 1 FROM source_failures f JOIN assets a ON a.id=f.asset_id
             JOIN destinations d ON d.id=f.destination_id
             WHERE f.permanent=0 AND d.selected=1 AND d.enabled=1
+              AND NOT EXISTS(SELECT 1 FROM excluded_assets e WHERE e.provider=d.provider AND e.local_id=a.local_id)
               AND a.scan_id=(SELECT value FROM meta WHERE key='scan')
               AND NOT EXISTS(SELECT 1 FROM aliases x JOIN jobs j ON j.id=x.job_id
                   WHERE x.asset_id=a.id AND x.destination_id=d.id AND j.state='confirmed')
@@ -185,8 +188,9 @@ extension Ledger {
             let id = try row.map { row -> UUID in
                 guard let id = UUID(uuidString: try row.string("id")) else { throw CoreError.invalidContract }; return id
             }
-            let photos = scanned && id != nil ? try counts(destinationID: id!, kind: .photo) : nil
-            let videos = scanned && id != nil ? try counts(destinationID: id!, kind: .video) : nil
+            let ready = try exclusionReady(provider)
+            let photos = scanned && id != nil && ready ? try counts(destinationID: id!, kind: .photo) : nil
+            let videos = scanned && id != nil && ready ? try counts(destinationID: id!, kind: .video) : nil
             let last = try id.flatMap { try db.rows("SELECT MAX(last_confirmed) AS date FROM jobs WHERE destination_id=?", [$0.sql]).first?.double("date") }.map(Date.init(timeIntervalSince1970:))
             let failure = try row.flatMap { row -> SafeFailure? in
                 if case .blob = row.values["blocked"] { return try db.decode(SafeFailure.self, row, "blocked") }; return nil
@@ -231,10 +235,18 @@ extension Ledger {
             LEFT JOIN jobs j ON j.id=x.job_id
             LEFT JOIN source_failures f ON f.asset_id=a.id AND f.destination_id=?
             WHERE a.kind=? AND a.scan_id=(SELECT value FROM meta WHERE key='scan')
-            """, [destinationID.sql, destinationID.sql, .text(kind.rawValue)]).first!
+            AND NOT EXISTS(SELECT 1 FROM excluded_assets e WHERE e.local_id=a.local_id
+                AND e.provider=(SELECT provider FROM destinations WHERE id=?))
+            """, [destinationID.sql, destinationID.sql, .text(kind.rawValue), destinationID.sql]).first!
         let confirmed = Int(row.int("confirmed")), uploaded = Int(row.int("uploaded"))
+        let excluded = Int(try db.rows("""
+            SELECT COUNT(*) AS n FROM assets a WHERE a.kind=?
+            AND a.scan_id=(SELECT value FROM meta WHERE key='scan')
+            AND EXISTS(SELECT 1 FROM excluded_assets e WHERE e.local_id=a.local_id
+                AND e.provider=(SELECT provider FROM destinations WHERE id=?))
+            """, [.text(kind.rawValue), destinationID.sql]).first!.int("n"))
         return MediaCounts(total: Int(row.int("total")), confirmed: confirmed, uploaded: uploaded,
-                           alreadyPresent: confirmed - uploaded, failed: Int(row.int("failed")), waiting: Int(row.int("waiting")))
+                           alreadyPresent: confirmed - uploaded, failed: Int(row.int("failed")), waiting: Int(row.int("waiting")), excluded: excluded)
     }
     public func failurePage(beforeCursor: Int64? = nil, provider: Provider? = nil, kind: MediaKind? = nil,
                             limit: Int = 50, states: [JobState]? = nil) throws -> [FailureRow] {

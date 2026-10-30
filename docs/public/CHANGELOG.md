@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8 — 2026-10-30
+
+**Preview channel. Stable remains0.5.**
+
+- Exclude regular Photos albums separately for Google Photos and Telegram.
+  Rules apply before original export and again before sending; existing cloud
+  files are unchanged. Excluded items have a separate count.
+- Redesign Keep Awake with a black background, stable progress ring, aligned
+  close control and Dim/Comfortable appearance options. Remove the square launch
+  background while retaining the existing app icon.
+- Share Google token refresh between concurrent operations, distinguish service
+  outages from expired sign-in, and recover a background401 with bounded refresh
+  rather than immediately asking for another login. No automatic byte replay.
+- Preserve pending background delegate results and settle Telegram failed sends
+  with bounded native rechecks. Unknown readers and unconfirmed outcomes remain
+  protected; a file failure does not authorize a blind resend.
+- Keep unreadable issue details visible and skip permanently unavailable Telegram
+  channel candidates without hiding account, rate or network errors.
+
+Update in place with the same signing/container identity. This preview upgrades
+the local database to schema6; downgrading to0.7 or earlier in that container is
+unsupported. Published0.5 and0.7 assets remain unchanged.
+
 ## 0.7 — 2026-10-29
 
 **Preview channel; stable installer feeds remain on 0.5.**

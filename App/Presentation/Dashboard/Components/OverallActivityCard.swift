@@ -2,8 +2,8 @@ import SwiftUI
 
 public struct OverallActivityCard: View {
     public let title: String
-    public let libraryTotal: Int?
-    public let savedToBoth: Int?
+    public let total: Int?
+    public let saved: Int?
     public let canPause: Bool
     public let canResume: Bool
     public let canStart: Bool
@@ -38,13 +38,13 @@ public struct OverallActivityCard: View {
     }
 
     private var fraction: Double? {
-        guard let savedToBoth, let libraryTotal, libraryTotal > 0 else { return nil }
-        return Double(savedToBoth) / Double(libraryTotal)
+        guard let saved, let total, total > 0 else { return nil }
+        return Double(saved) / Double(total)
     }
     private var summary: String {
-        if let savedToBoth, let libraryTotal { return "\(savedToBoth.formatted()) of \(libraryTotal.formatted()) saved to both" }
-        if let libraryTotal { return "\(libraryTotal.formatted()) photos and videos" }
-        return "Connect a destination to get started"
+        if let saved, let total { return "\(saved.formatted()) of \(total.formatted()) destination saves" }
+        if let total { return "\(total.formatted()) photos and videos" }
+        return "Backup counts unavailable"
     }
     private func action() {
         if canPause { onPause() } else if canResume { onResume() } else { onBackUp() }

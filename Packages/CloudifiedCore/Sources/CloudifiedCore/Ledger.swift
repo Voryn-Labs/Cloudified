@@ -31,6 +31,7 @@ public actor Ledger {
             try connection.execute("UPDATE obligations SET status='unknown' WHERE status!='confirmed'")
             try connection.execute("UPDATE jobs SET state='reconciling' WHERE state IN ('uploading','preparing','ready','checking')")
             try connection.execute("DELETE FROM reservations")
+            try connection.execute("UPDATE exclusion_state SET pending=1 WHERE EXISTS(SELECT 1 FROM album_exclusions r WHERE r.provider=exclusion_state.provider)")
         }
         db = connection
     }
@@ -261,7 +262,7 @@ public actor Ledger {
         }
     }
     func loadJob(_ id: UUID) throws -> JobRecord {
-        guard let row = try db.rows("SELECT j.*,d.body AS destination_body,a.body AS asset_body FROM jobs j JOIN destinations d ON d.id=j.destination_id JOIN assets a ON a.id=COALESCE((SELECT x.asset_id FROM aliases x JOIN assets ax ON ax.id=x.asset_id WHERE x.job_id=j.id ORDER BY (ax.scan_id=(SELECT value FROM meta WHERE key='scan')) DESC,x.asset_id LIMIT 1),j.asset_id) WHERE j.id=?", [id.sql]).first,
+        guard let row = try db.rows("SELECT j.*,d.body AS destination_body,a.body AS asset_body FROM jobs j JOIN destinations d ON d.id=j.destination_id JOIN assets a ON a.id=COALESCE((SELECT x.asset_id FROM aliases x JOIN assets ax ON ax.id=x.asset_id WHERE x.job_id=j.id ORDER BY (ax.scan_id=(SELECT value FROM meta WHERE key='scan')) DESC,(x.asset_id=j.asset_id) DESC,x.asset_id LIMIT 1),j.asset_id) WHERE j.id=?", [id.sql]).first,
               let cycle = UUID(uuidString: try row.string("cycle")), let state = JobState(rawValue: try row.string("state")) else { throw CoreError.invalidContract }
         return JobRecord(id: id, destination: try db.decode(Destination.self, row, "destination_body"), asset: try db.decode(AssetIdentity.self, row, "asset_body"), plan: try db.decode(UploadPlan.self, row, "plan"), state: state, cycleID: cycle, attempts: Int(row.int("attempts")), retryAt: row.double("retry_at").map(Date.init(timeIntervalSince1970:)))
     }

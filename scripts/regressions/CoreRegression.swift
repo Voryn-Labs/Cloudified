@@ -44,9 +44,14 @@ func start(_ f: Fixture, now: Date = Date()) async throws -> JobRecord {
 }
 @main struct CoreRegression {
     static func main() async throws {
+        try await authenticationRegression()
+        backgroundCompletionRegression()
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        try await albumExclusionRegression(root)
+        try await albumMigrationRegression(root)
+        try manifestBoundaryChecks()
         try await googleRemoteIndexChecks(root: root)
         try await googleReconciliationLimitChecks(root: root)
         try await receiptRecoveryChecks(root: root)

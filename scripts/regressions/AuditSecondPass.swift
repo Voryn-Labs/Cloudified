@@ -59,9 +59,11 @@ func secondPassChecks(root: URL) async throws {
     if case .active = try transport.cachedInventory(old, new: true) {} else { preconditionFailure("new task absent from earlier inventory was discarded") }
     let detached = Task { try await transport.attachBoundaryWaiter(old) }
     while !transport.hasBoundaryWaiter(old) { await Task.yield() }
-    if case .absent = try transport.cachedInventory(old, new: false) {} else { preconditionFailure("stale cached task stayed active without OS reader") }
+    if case .active = try transport.cachedInventory(old, new: false) {} else { preconditionFailure("inventory stole an attached delegate result") }
+    check(transport.hasBoundaryWaiter(old), "completion waiter discarded before callback")
+    transport.completeFailure(old)
     do { _ = try await detached.value; preconditionFailure("missing native task fabricated upload result") }
-    catch let failure as SafeFailure { check(failure.cause == .interrupted, "missing native task left a waiter suspended") }
+    catch let failure as SafeFailure { check(failure.cause == .interrupted, "native cancellation result was lost") }
     let bad = UUID()
     _ = try transport.cachedInventory(bad, new: true)
     transport.forceFailure(bad); transport.completeFailure(bad)

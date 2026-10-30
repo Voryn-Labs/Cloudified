@@ -215,8 +215,12 @@ public enum GoogleTokenExchange {
                 throw Failure(stage: stage.rawValue, message: "Authentication service returned a non-HTTP response.")
             }
             guard http.statusCode == 200 || http.statusCode == 403 else {
+                let category: FailureCategory = http.statusCode == 429 ? .rateLimit :
+                    (http.statusCode == 408 ? .timeout : (http.statusCode >= 500 ? .connectivity : .authentication))
+                let cause: KnownCause = http.statusCode == 429 ? .serverRateLimit :
+                    (http.statusCode == 408 ? .deadlineExceeded : (http.statusCode >= 500 ? .networkRequestFailed : .providerRejected))
                 throw Failure(stage: stage.rawValue, message: "Authentication service rejected the request.",
-                    failure: SafeFailure(.authentication, domain: .google, code: http.statusCode, cause: .providerRejected))
+                    failure: SafeFailure(category, domain: .google, code: http.statusCode, cause: cause))
             }
             await onDiagnostic?(DiagnosticDetail(stage: stage, status: .changed, correlationID: id,
                 httpStatus: http.statusCode, responseBytes: data.count), nil,

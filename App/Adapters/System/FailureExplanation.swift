@@ -28,6 +28,7 @@ enum FailureExplanation {
         case .insufficientSpace: return "More device space is needed to stage the original safely. Other admissible assets can continue."
         case .formatRejected: return "The original format or resource layout is unsupported by this destination. No quality conversion was made."
         case .contentChanged: return "This asset changed while its original was being prepared. Refresh the library and try again."
+        case .exclusionUnavailable: return "An excluded album is unavailable. Open Settings → Excluded albums to remove that rule, or restore Photos access. New uploads to this destination wait until its exclusions can be checked."
         case .sourceMissing: return "The original asset is no longer available in the accessible Photos library."
         case .interrupted: return "Work was interrupted. Uncertain sends are checked before another upload."
         case .serverRateLimit: return "The destination requested a delay. Its retry time is retained; the other destination can continue."
@@ -66,6 +67,7 @@ enum FailureExplanation {
         }
     }
     static func destinationAttention(_ failure: SafeFailure) -> ProviderCardState.Attention? {
+        if failure.cause == .exclusionUnavailable { return nil }
         if [.setupUnavailable, .initializationFailed, .databaseKeyUnavailable, .nativeResponseInvalid, .nativeResponseLimit].contains(failure.cause) { return .connection }
         if [.photos, .fileSystem, .sqlite].contains(failure.domain) { return nil }
         if failure.cause == .loginRequired || failure.cause == .identityUnverified { return .signIn }

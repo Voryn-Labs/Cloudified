@@ -2,6 +2,11 @@ import Foundation
 import CloudifiedCore
 
 extension AppEnvironment {
+    private func failureDisplayRecipe(_ data: Data?) -> (SourceRecipe?, Bool) {
+        guard let data else { return (nil, false) }
+        do { return (try SourceRecipe.decode(from: data), false) }
+        catch { return (nil, true) }
+    }
     public func reloadFailures() {
         failureQueryGeneration += 1; failureCursor = nil; sourceFailureCursor = nil
         failurePageHistory.removeAll(); notUploadedState.hasNewer = false
@@ -38,33 +43,33 @@ extension AppEnvironment {
                 var items: [NotUploadedItem] = []
                 for row in failures {
                     try Task.checkCancellation()
-                    let source = try row.recipeData.map { try SourceRecipe.decode(from: $0) }
+                    let (source, damagedRecipe) = failureDisplayRecipe(row.recipeData)
                     let retained = row.retained
                     let recover = retained || row.job.state == .reconciling || FailureExplanation.requiresReconciliation(row.failure)
                     items.append(NotUploadedItem(id: row.asset.id.uuidString + row.job.destination.id.uuidString,
                         destinationID: row.job.destination.id,
                         canRetry: !recover && (row.job.state == .failed || row.failure?.cause == .pairingUnverified || row.failure?.cause == .possibleOriginalMatch), needsRecovery: recover,
                         jobID: row.job.id, localIdentifier: row.asset.localIdentifier,
-                        filename: source?.resources.first?.originalFilename ?? "Original media (name unavailable)",
+                        filename: source?.resources.first?.originalFilename ?? (damagedRecipe ? "Original media (details unreadable)" : "Original media (name unavailable)"),
                         captureDate: source?.metadata.creationDate, mediaType: row.asset.kind == .photo ? "Photo" : "Video",
                         durationSeconds: source?.metadata.durationSeconds, provider: row.job.destination.provider.displayName,
                         status: row.job.state == .failed ? "Failed" : (row.job.state == .delayed ? "Pending retry" : "Waiting"),
                         attemptCount: row.job.attempts, stage: row.job.state.rawValue,
                         errorCategory: row.failure?.category.rawValue ?? "Pending verification", technicalCode: row.failure?.description,
-                        plainLanguageReason: row.failure.map(self.explain) ?? "Waiting for a verified result.", suggestedRemedy: FailureExplanation.remedy(row.failure),
+                        plainLanguageReason: (row.failure.map(self.explain) ?? "Waiting for a verified result.") + (damagedRecipe ? " File details could not be read; the upload status is unchanged." : ""), suggestedRemedy: FailureExplanation.remedy(row.failure),
                         confirmedComponents: ["\(row.confirmedResources) of \(row.requiredResources) obligations confirmed"],
                         missingObligations: ["\(row.requiredResources - row.confirmedResources) obligations remain"], nextRetryDate: row.job.retryAt))
                 }
                 for row in sources {
                     try Task.checkCancellation()
-                    let source = try row.recipeData.map { try SourceRecipe.decode(from: $0) }
+                    let (source, damagedRecipe) = failureDisplayRecipe(row.recipeData)
                     items.append(NotUploadedItem(id: row.asset.id.uuidString + row.destination.id.uuidString,
                         destinationID: row.destination.id, sourceAsset: row.asset, canRetry: true, localIdentifier: row.asset.localIdentifier,
-                        filename: source?.resources.first?.originalFilename ?? "Original media (name unavailable)", captureDate: source?.metadata.creationDate,
+                        filename: source?.resources.first?.originalFilename ?? (damagedRecipe ? "Original media (details unreadable)" : "Original media (name unavailable)"), captureDate: source?.metadata.creationDate,
                         mediaType: row.asset.kind == .photo ? "Photo" : "Video", durationSeconds: source?.metadata.durationSeconds,
                         provider: row.destination.provider.displayName, status: row.permanent ? "Failed source preparation" : "Waiting for source",
                         stage: "Source preparation (upload not started)", errorCategory: row.error.category.rawValue, technicalCode: row.error.description,
-                        plainLanguageReason: self.explain(row.error), suggestedRemedy: FailureExplanation.remedy(row.error)))
+                        plainLanguageReason: self.explain(row.error) + (damagedRecipe ? " File details could not be read; the upload status is unchanged." : ""), suggestedRemedy: FailureExplanation.remedy(row.error)))
                 }
                 guard generation == self.failureQueryGeneration else { return }
                 self.nextFailureCursor = failures.count == 50 ? failures.last?.cursor : nil

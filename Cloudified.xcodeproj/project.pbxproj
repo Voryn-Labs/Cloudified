@@ -10,6 +10,7 @@
 		F2C115639A5F2F1C885D6400 /* CloudifiedApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0556C8F10FE467C1DAA78F /* CloudifiedApp.swift */; };
 		DE0580AFC1624B824A2A9223 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C920D0424CAB6DF7DACEE6CD /* AppEnvironment.swift */; };
 		7DAF2912A0C4688906BAC2AE /* AppEnvironment+Accounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8217C36E1AAAAD8307FDD6D /* AppEnvironment+Accounts.swift */; };
+		1445EDCC1900ACB57ECDB207 /* AppEnvironment+Albums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 704D4E62AF66FFC6E60D2627 /* AppEnvironment+Albums.swift */; };
 		DD314A9AA9A8B6DAA88F1D55 /* AppEnvironment+Backup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12ED7E397734508921F40DFE /* AppEnvironment+Backup.swift */; };
 		8B1FF94B6408573FA50CAC43 /* AppEnvironment+Background.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE0FC5234C6367DE1683F92 /* AppEnvironment+Background.swift */; };
 		75758BE88C116861E0B8A032 /* AppEnvironment+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBDE9BCF1F0E3D2295262688 /* AppEnvironment+Lifecycle.swift */; };
@@ -38,6 +39,7 @@
 		7F9361CFC65F0B118F621579 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89B769065C8FE53636E09C06 /* LogsView.swift */; };
 		60BE2EA5876CCE34A50B4AEC /* LogsViewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096E5F4D9E3772CE356F849C /* LogsViewState.swift */; };
 		B194B991052625F01EA4C539 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4B09C61D3A3BE3D1761161 /* SettingsView.swift */; };
+		9C972A0AF9D835283382DD7B /* AlbumExclusionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEF8DAF32AAFE4E81E28970 /* AlbumExclusionsView.swift */; };
 		48040AF6F628101D6C111A0E /* HelpViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5057F41416D2DA9BFC532E86 /* HelpViews.swift */; };
 		9B3BC539F764A671FA91B1D8 /* GoogleAccountLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9F2FB049C506F1CFB84239 /* GoogleAccountLoginView.swift */; };
 		DE01CB5B5503DDA91071B318 /* GoogleAuthSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB97C44A783FFE56B1B234B1 /* GoogleAuthSheet.swift */; };
@@ -55,6 +57,7 @@
 		3B1053823E65810E9BB97C67 /* PhotoLibraryOriginalPreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CB698CCC77BEE4D3BC67F1 /* PhotoLibraryOriginalPreparer.swift */; };
 		BE469E417A4C88F134428D09 /* PhotoKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF702D9F6E179878AE201A2C /* PhotoKitScanner.swift */; };
 		29155BF5E8ABBA49C6189436 /* PhotoLibraryPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81D7A8DC7F05AE4ABABB884 /* PhotoLibraryPipeline.swift */; };
+		B38835BB6326F5C024665444 /* AlbumExclusionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE185F7EB2B93CD36946B367 /* AlbumExclusionPolicy.swift */; };
 		C7D39F78BD260E9BF05217D6 /* GooglePhotosAdapterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C6864CFD3D4BBC0C024FA7 /* GooglePhotosAdapterProtocol.swift */; };
 		DF659A1631F2214B6D4E7791 /* Protobuf.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4570CF8817F826B1EE4E53E /* Protobuf.swift */; };
 		74E785D97A9B6818BB33D95B /* GPMCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7347B422AF74502D4A4B0F /* GPMCClient.swift */; };
@@ -99,6 +102,7 @@
 		6B0556C8F10FE467C1DAA78F /* CloudifiedApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CloudifiedApp.swift"; sourceTree = "<group>"; };
 		C920D0424CAB6DF7DACEE6CD /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment.swift"; sourceTree = "<group>"; };
 		A8217C36E1AAAAD8307FDD6D /* AppEnvironment+Accounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment+Accounts.swift"; sourceTree = "<group>"; };
+		704D4E62AF66FFC6E60D2627 /* AppEnvironment+Albums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment+Albums.swift"; sourceTree = "<group>"; };
 		12ED7E397734508921F40DFE /* AppEnvironment+Backup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment+Backup.swift"; sourceTree = "<group>"; };
 		8CE0FC5234C6367DE1683F92 /* AppEnvironment+Background.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment+Background.swift"; sourceTree = "<group>"; };
 		CBDE9BCF1F0E3D2295262688 /* AppEnvironment+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppEnvironment+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -127,6 +131,7 @@
 		89B769065C8FE53636E09C06 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LogsView.swift"; sourceTree = "<group>"; };
 		096E5F4D9E3772CE356F849C /* LogsViewState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LogsViewState.swift"; sourceTree = "<group>"; };
 		FC4B09C61D3A3BE3D1761161 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SettingsView.swift"; sourceTree = "<group>"; };
+		0AEF8DAF32AAFE4E81E28970 /* AlbumExclusionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AlbumExclusionsView.swift"; sourceTree = "<group>"; };
 		5057F41416D2DA9BFC532E86 /* HelpViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelpViews.swift"; sourceTree = "<group>"; };
 		4B9F2FB049C506F1CFB84239 /* GoogleAccountLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GoogleAccountLoginView.swift"; sourceTree = "<group>"; };
 		BB97C44A783FFE56B1B234B1 /* GoogleAuthSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GoogleAuthSheet.swift"; sourceTree = "<group>"; };
@@ -144,6 +149,7 @@
 		C9CB698CCC77BEE4D3BC67F1 /* PhotoLibraryOriginalPreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhotoLibraryOriginalPreparer.swift"; sourceTree = "<group>"; };
 		FF702D9F6E179878AE201A2C /* PhotoKitScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhotoKitScanner.swift"; sourceTree = "<group>"; };
 		D81D7A8DC7F05AE4ABABB884 /* PhotoLibraryPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhotoLibraryPipeline.swift"; sourceTree = "<group>"; };
+		CE185F7EB2B93CD36946B367 /* AlbumExclusionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AlbumExclusionPolicy.swift"; sourceTree = "<group>"; };
 		27C6864CFD3D4BBC0C024FA7 /* GooglePhotosAdapterProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooglePhotosAdapterProtocol.swift"; sourceTree = "<group>"; };
 		D4570CF8817F826B1EE4E53E /* Protobuf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Protobuf.swift"; sourceTree = "<group>"; };
 		9B7347B422AF74502D4A4B0F /* GPMCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GPMCClient.swift"; sourceTree = "<group>"; };
@@ -219,6 +225,7 @@
 				6B0556C8F10FE467C1DAA78F /* CloudifiedApp.swift */,
 				C920D0424CAB6DF7DACEE6CD /* AppEnvironment.swift */,
 				A8217C36E1AAAAD8307FDD6D /* AppEnvironment+Accounts.swift */,
+				704D4E62AF66FFC6E60D2627 /* AppEnvironment+Albums.swift */,
 				12ED7E397734508921F40DFE /* AppEnvironment+Backup.swift */,
 				8CE0FC5234C6367DE1683F92 /* AppEnvironment+Background.swift */,
 				CBDE9BCF1F0E3D2295262688 /* AppEnvironment+Lifecycle.swift */,
@@ -288,6 +295,7 @@
 			isa = PBXGroup;
 			children = (
 				FC4B09C61D3A3BE3D1761161 /* SettingsView.swift */,
+				0AEF8DAF32AAFE4E81E28970 /* AlbumExclusionsView.swift */,
 				5057F41416D2DA9BFC532E86 /* HelpViews.swift */,
 				4B9F2FB049C506F1CFB84239 /* GoogleAccountLoginView.swift */,
 				BB97C44A783FFE56B1B234B1 /* GoogleAuthSheet.swift */,
@@ -322,6 +330,7 @@
 				C9CB698CCC77BEE4D3BC67F1 /* PhotoLibraryOriginalPreparer.swift */,
 				FF702D9F6E179878AE201A2C /* PhotoKitScanner.swift */,
 				D81D7A8DC7F05AE4ABABB884 /* PhotoLibraryPipeline.swift */,
+				CE185F7EB2B93CD36946B367 /* AlbumExclusionPolicy.swift */,
 			);
 			path = PhotoLibrary; sourceTree = "<group>";
 		};
@@ -479,6 +488,7 @@
 				F2C115639A5F2F1C885D6400 /* CloudifiedApp.swift in Sources */,
 				DE0580AFC1624B824A2A9223 /* AppEnvironment.swift in Sources */,
 				7DAF2912A0C4688906BAC2AE /* AppEnvironment+Accounts.swift in Sources */,
+				1445EDCC1900ACB57ECDB207 /* AppEnvironment+Albums.swift in Sources */,
 				DD314A9AA9A8B6DAA88F1D55 /* AppEnvironment+Backup.swift in Sources */,
 				8B1FF94B6408573FA50CAC43 /* AppEnvironment+Background.swift in Sources */,
 				75758BE88C116861E0B8A032 /* AppEnvironment+Lifecycle.swift in Sources */,
@@ -507,6 +517,7 @@
 				7F9361CFC65F0B118F621579 /* LogsView.swift in Sources */,
 				60BE2EA5876CCE34A50B4AEC /* LogsViewState.swift in Sources */,
 				B194B991052625F01EA4C539 /* SettingsView.swift in Sources */,
+				9C972A0AF9D835283382DD7B /* AlbumExclusionsView.swift in Sources */,
 				48040AF6F628101D6C111A0E /* HelpViews.swift in Sources */,
 				9B3BC539F764A671FA91B1D8 /* GoogleAccountLoginView.swift in Sources */,
 				DE01CB5B5503DDA91071B318 /* GoogleAuthSheet.swift in Sources */,
@@ -524,6 +535,7 @@
 				3B1053823E65810E9BB97C67 /* PhotoLibraryOriginalPreparer.swift in Sources */,
 				BE469E417A4C88F134428D09 /* PhotoKitScanner.swift in Sources */,
 				29155BF5E8ABBA49C6189436 /* PhotoLibraryPipeline.swift in Sources */,
+				B38835BB6326F5C024665444 /* AlbumExclusionPolicy.swift in Sources */,
 				C7D39F78BD260E9BF05217D6 /* GooglePhotosAdapterProtocol.swift in Sources */,
 				DF659A1631F2214B6D4E7791 /* Protobuf.swift in Sources */,
 				74E785D97A9B6818BB33D95B /* GPMCClient.swift in Sources */,
@@ -707,7 +719,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.7;
+				MARKETING_VERSION = 0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -746,7 +758,7 @@
 					"-lc++",
 					"-lz",
 				);
-				MARKETING_VERSION = 0.7;
+				MARKETING_VERSION = 0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

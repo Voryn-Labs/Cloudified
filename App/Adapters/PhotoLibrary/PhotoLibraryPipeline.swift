@@ -60,6 +60,10 @@ public final class PhotoLibraryPipeline: PhotoLibraryAdapterProtocol, Sendable {
         telegramDestination: Destination?, googleLiveFallback: LivePhotoFallbackOption,
         videoPartThreshold: Int64, speculative: Bool
     ) async throws {
+        let googleAllowed = googleDestination == nil ? false : try await AlbumExclusionPolicy.mayUpload(asset.localIdentifier, provider: .google, ledger: ledger)
+        let telegramAllowed = telegramDestination == nil ? false : try await AlbumExclusionPolicy.mayUpload(asset.localIdentifier, provider: .telegram, ledger: ledger)
+        let googleDestination = googleAllowed ? googleDestination : nil
+        let telegramDestination = telegramAllowed ? telegramDestination : nil
         let destinations = [googleDestination, telegramDestination].compactMap { $0 }
         guard !destinations.isEmpty else { return }
         guard (1...LosslessVideoPartSplitter.defaultTargetPartSize).contains(videoPartThreshold),

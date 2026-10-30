@@ -63,6 +63,7 @@ public struct ProviderStatusCard: View {
         if let attention = state.attention { return attention == .rateLimit ? "Limited" : "Action needed" }
         if let transfer { return transfer.fractionCompleted == nil ? "Working" : (transfer.fractionCompleted == 1 ? "Verifying" : "Uploading") }
         if (state.failedCount ?? 0) > 0 { return "Issues" }
+        if state.totalCount == 0, (state.excludedCount ?? 0) > 0 { return "Excluded" }
         if state.remainingCount == 0 { return "Saved" }
         if (state.waitingCount ?? 0) > 0 { return "Waiting" }
         return "Ready"
@@ -96,6 +97,7 @@ public struct ProviderStatusCard: View {
             Section("Backup progress") {
                 stat("Saved", state.savedCount)
                 stat("Remaining", state.remainingCount)
+                stat("Excluded", state.excludedCount)
                 stat("Waiting", state.waitingCount)
                 stat("Failed", state.failedCount)
                 if let date = state.lastConfirmedDate { LabeledContent("Last saved", value: date.formatted(date: .abbreviated, time: .shortened)).font(.subheadline) }

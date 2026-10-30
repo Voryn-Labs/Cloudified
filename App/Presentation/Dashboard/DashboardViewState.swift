@@ -96,6 +96,7 @@ public struct ProviderCardState: Equatable, Sendable {
     public var savedCount: Int?
     public var remainingCount: Int?
     public var totalCount: Int?
+    public var excludedCount: Int? = nil
     public var waitingCount: Int?
     public var failedCount: Int?
     public var lastConfirmedDate: Date?

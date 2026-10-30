@@ -39,6 +39,7 @@ sources = [
     ("CloudifiedApp.swift", "application"),
     ("AppEnvironment.swift", "application"),
     ("AppEnvironment+Accounts.swift", "application"),
+    ("AppEnvironment+Albums.swift", "application"),
     ("AppEnvironment+Backup.swift", "application"),
     ("AppEnvironment+Background.swift", "application"),
     ("AppEnvironment+Lifecycle.swift", "application"),
@@ -69,6 +70,7 @@ sources = [
     ("LogsView.swift", "logs"),
     ("LogsViewState.swift", "logs"),
     ("SettingsView.swift", "settings"),
+    ("AlbumExclusionsView.swift", "settings"),
     ("HelpViews.swift", "settings"),
     ("GoogleAccountLoginView.swift", "settings"),
     ("GoogleAuthSheet.swift", "settings"),
@@ -87,6 +89,7 @@ sources = [
     ("PhotoLibraryOriginalPreparer.swift", "photo_library"),
     ("PhotoKitScanner.swift", "photo_library"),
     ("PhotoLibraryPipeline.swift", "photo_library"),
+    ("AlbumExclusionPolicy.swift", "photo_library"),
     ("GooglePhotosAdapterProtocol.swift", "google_photos"),
     ("Protobuf.swift", "google_photos"),
     ("GPMCClient.swift", "google_photos"),
@@ -510,7 +513,7 @@ pbxproj_content = f"""// !$*UTF8*$!
 \t\t\t\t\t"-lc++",
 \t\t\t\t\t"-lz",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 0.7;
+\t\t\t\tMARKETING_VERSION = 0.8;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
@@ -549,7 +552,7 @@ pbxproj_content = f"""// !$*UTF8*$!
 \t\t\t\t\t"-lc++",
 \t\t\t\t\t"-lz",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 0.7;
+\t\t\t\tMARKETING_VERSION = 0.8;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vorynlabs.cloudified;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;

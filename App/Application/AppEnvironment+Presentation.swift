@@ -146,6 +146,7 @@ extension AppEnvironment {
                     lastConfirmedDate: value.lastConfirmedAt)
                 card.retainedTransferCount = value.retainedTransfers
                 card.protectedUnresolvedCount = value.protectedUnresolvedTransfers
+                card.excludedCount = value.excluded
                 if value.destinationID != nil && value.enabled, let error {
                     card.attention = FailureExplanation.destinationAttention(error)
                     if card.attention != nil {

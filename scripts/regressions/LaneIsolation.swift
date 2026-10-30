@@ -31,9 +31,18 @@ private actor LaneBoundary: ProviderAdapter {
         return .confirmed(RemoteReceipt(destinationID: job.destination.id, tag: resource.tag, opaqueReference: Data([1]), kind: .uploaded), .terminal)
     }
 }
-private struct LanePreparer: OriginalPreparer {
+private actor LanePreparer: OriginalPreparer {
     let files: FileLeaseStore
     let ids: [UUID: UUID]
+    private var checks: [UUID: Int] = [:]
+    init(files: FileLeaseStore, ids: [UUID: UUID]) { self.files = files; self.ids = ids }
+    func mayUpload(_ job: JobRecord) throws -> Bool {
+        checks[job.id, default: 0] += 1
+        if job.asset.localIdentifier.hasSuffix("-3") || (job.asset.localIdentifier.hasSuffix("-2") && checks[job.id]! > 1) {
+            throw SafeFailure(.sourceUnavailable, domain: .photos, cause: .sourceMissing)
+        }
+        return true
+    }
     func prepare(job: JobRecord, resource: ResourceRequirement, receipts: [RemoteReceipt]) async throws -> [LeasedFile] {
         [try await files.acquire(fileID: ids[resource.id]!)]
     }
@@ -46,13 +55,13 @@ func laneChecks(root: URL) async throws {
         try await ledger.completeDestinationRecovery(d.id); destinations.append(d)
     }
     let scan = try await ledger.beginScan()
-    let assets = try await ledger.registerAssets((0..<3).map { AssetIdentity(localIdentifier: "host-lane-\($0)", generation: String(repeating: "a", count: 64), kind: $0 == 2 ? .video : .photo) }, scanID: scan)
+    let assets = try await ledger.registerAssets((0..<5).map { AssetIdentity(localIdentifier: "host-lane-\($0)", generation: String(repeating: "a", count: 64), kind: $0 == 4 ? .video : .photo) }, scanID: scan)
     try await ledger.completeScan(scan)
     let files = try FileLeaseStore(root: root.appendingPathComponent("lanes"), ledger: ledger)
     var ids: [UUID: UUID] = [:], tags: [String] = []
     for (i, asset) in assets.enumerated() {
-        let role: ResourceRole = i == 2 ? .video : .still
-        let content = OriginalContent(sha256: String(repeating: ["b", "d", "f"][i], count: 64), sha1: String(repeating: "c", count: 40), byteCount: 3, role: role)
+        let role: ResourceRole = i == 4 ? .video : .still
+        let content = OriginalContent(sha256: String(repeating: ["b", "d", "f", "e", "a"][i], count: 64), sha1: String(repeating: "c", count: 40), byteCount: 3, role: role)
         let resource = try ContentIdentity.resource(role: role, originals: [content]); tags.append(resource.tag)
         let plan = try ContentIdentity.plan(policyVersion: "host-lane", resources: [resource])
         for d in destinations { _ = try await ledger.enqueue(assetID: asset.id, destinationID: d.id, plan: plan) }
@@ -68,7 +77,7 @@ func laneChecks(root: URL) async throws {
     let results = try await engine.runReadyBatch(adapters: adapters, preparer: LanePreparer(files: files, ids: ids))
     check(results.count == 2 && results.allSatisfy { $0.failure == nil }, "item error escaped into destination result")
     for provider in try await ledger.snapshot().providers {
-        check(provider.photos?.waiting == 1 && provider.photos?.failed == 1 && provider.videos?.confirmed == 1, "bad photo blocked later video or crossed destination scope")
+        check(provider.photos?.waiting == 1 && provider.photos?.failed == 3 && provider.videos?.confirmed == 1, "bad photo blocked later video or crossed destination scope")
     }
     check(await barrier.entered.count == 2, "providers did not overlap")
     print("PASS actual engine: concurrent Google/Telegram, item inspection/upload failures isolated, healthy video confirms independently")

@@ -18,7 +18,7 @@ public enum FailureCategory: String, Codable, Sendable {
 public enum ErrorDomain: String, Codable, Sendable { case photos, fileSystem, urlSession, google, tdlib, sqlite, core }
 public enum KnownCause: String, Codable, Sendable {
     case possibleOriginalMatch, googleIndexPending, commitRecoveryPending, commitRecoveryExhausted
-    case unknown, permissionDenied, sourceMissing, insufficientSpace, formatRejected, offline
+    case unknown, permissionDenied, sourceMissing, insufficientSpace, formatRejected, offline, exclusionUnavailable
     case deadlineExceeded, serverRateLimit, loginRequired, quotaExceeded, providerRejected
     case incompleteHistory, outcomeUnknown, interrupted, disabled, paused, contentChanged
     case persistenceFailed, invalidContract, identityUnverified, pairingUnverified, pendingSendUnmatched
