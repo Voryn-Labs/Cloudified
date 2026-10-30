@@ -18,6 +18,17 @@
       "category": "photo-video",
       "versions": [
         {
+          "version": "0.81",
+          "buildVersion": "38",
+          "marketingVersion": "0.81 Preview (38)",
+          "date": "2026-10-30T17:33:29Z",
+          "localizedDescription": "Latest preview; stable remains0.5.\n\n- Filter unrelated Telegram chat/file updates before the bounded native queue,\n  preventing irrelevant bursts from poisoning upload delivery. Preserve owned\n  completion/failure events, including retained uploads from an older mapping.\n- Gate a broken Telegram input stream once and request verified recovery, rather\n  than repeatedly admitting the same failed connection. Google stays independent.\n- Identify local connection-capacity failures accurately instead of calling them\n  Telegram server rejections. Record the precise capacity subtype; transient\n  request pressure remains retryable.\n- Preserve original media, upload profile, retry limits, receipts and protected\n  native files. Unknown outcomes still require verification before another send.\n\nUpdate in place with the same signing identity/container. This preview advances\nthe database to schema7; do not downgrade its container to0.8 or earlier.",
+          "downloadURL": "https://github.com/Voryn-Labs/Cloudified/releases/download/build-41096481874/Cloudified-unsigned.ipa",
+          "size": 17986116,
+          "sha256": "43a119261a75a8cc844908c332efc7e0d2b6942ea88e01b7491d56a05f94c84d",
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.8",
           "buildVersion": "37",
           "marketingVersion": "0.8 Preview (37)",
