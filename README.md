@@ -6,7 +6,7 @@
 
 Back up iPhone photos and videos to **Google Photos, Telegram, or both**.
 Open source, original quality, and a separate upload queue for each destination.
-By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.81**
+By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 1.0**
 
 [Download IPA](https://github.com/Voryn-Labs/Cloudified/releases/latest/download/Cloudified-unsigned.ipa) · [Website](https://voryn-labs.github.io/cloudified.html) · [Setup](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md)
 
@@ -23,16 +23,16 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.81**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
-### Latest stable: 0.81
+### Latest stable: 1.0
 
-The [0.81 release](https://github.com/Voryn-Labs/Cloudified/releases/latest) fixes a
+The [1.0 release](https://github.com/Voryn-Labs/Cloudified/releases/latest) fixes a
 Telegram local update-queue overflow that could stall uploads when unrelated
 updates crowded the bounded queue. It preserves Telegram recovery evidence and
 keeps Google uploads independent. It also includes the 0.8 album exclusions and
 Keep Awake redesign.
-The Voryn Labs source lists **Cloudified** stable at **0.81**. The separate
-**Cloudified Preview** card remains available for future previews. Update in place
-with the same signing identity/container. **0.81 upgrades the local database;
+The Voryn Labs source lists **Cloudified** stable at **1.0**. Preview builds remain
+on GitHub Releases and are hidden from the installer source. Update in place
+with the same signing identity/container. **1.0 upgrades the local database;
 do not downgrade that container to 0.8 or earlier.**
 [Release details](docs/public/CHANGELOG.md) · [Matching limits](docs/public/FAQ.md#what-changes-in-the-06-preview).
 

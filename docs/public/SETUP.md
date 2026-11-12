@@ -131,12 +131,11 @@ guides → FAQ and the [Live Photo comparison](FAQ.md#which-live-photo-setting-s
 
 ## Stable and preview versions
 
-The Voryn Labs source lists **Cloudified** stable at0.81 and a separate
-**Cloudified Preview** card for previews. Refresh the source in Feather to get the
-latest stable release. The stable IPA is also available from GitHub Releases.
-Both cards use `com.vorynlabs.cloudified`; preserve your signing identity and
-container when updating.
+The Voryn Labs source lists **Cloudified** stable at 1.0. Preview releases remain
+available in GitHub Releases but are hidden from the installer source. Refresh the
+source in Feather to get the latest stable version. Keep the same signing identity
+and `com.vorynlabs.cloudified` container when updating.
 
-0.81 upgrades the local database to schema7. Downgrading that same container to
-0.8 or earlier is not supported; update forward and retain existing receipts and
+Version 1.0 upgrades the local database to schema7. Downgrading that same container
+to0.8 or earlier is not supported; update forward and retain existing receipts and
 protected native inputs if an upload is unresolved.

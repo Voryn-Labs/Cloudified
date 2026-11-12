@@ -1,8 +1,26 @@
 # Changelog
 
-## 0.81 — 2026-11-12
+## 1.0 — 2026-11-12
 
-**Latest stable release.**
+**Latest stable release.** This stable release carries forward the Telegram
+reliability correction from preview0.81 and the album exclusions and Keep Awake
+redesign from0.8.
+
+- Filter unrelated Telegram chat/file updates before the bounded native queue,
+  preserving owned completion/failure events and preventing irrelevant bursts from
+  filling the queue.
+- Gate a broken Telegram input stream once and request recovery; keep Google uploads
+  independent. Distinguish local connection capacity from Telegram server rejection.
+- Preserve original media, upload profile, retries, receipts and protected native
+  files. Unknown outcomes still require verification before another send.
+- Retain separate provider album exclusions and the redesigned Keep Awake screen.
+
+Update in place with the same signing identity/container. This release advances the
+database to schema7; do not downgrade its container to0.8 or earlier.
+
+## 0.81 — 2026-10-30
+
+**Preview release.**
 
 - Filter unrelated Telegram chat/file updates before the bounded native queue,
   preventing irrelevant bursts from poisoning upload delivery. Preserve owned
