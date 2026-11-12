@@ -2,87 +2,21 @@
   "repository": "Voryn-Labs/Cloudified",
   "asset": "Cloudified-unsigned.ipa",
   "latest": {
-    "tag": "build-39731681087",
-    "name": "Cloudified 0.5",
-    "publishedAt": "2026-10-22T06:09:27Z",
-    "prerelease": false,
-    "assetID": 664863554,
-    "downloads": 32
+    "tag": "ci-run-38920202426-untested",
+    "name": "Cloudified 0.1",
+    "publishedAt": "2026-10-16T15:04:00Z",
+    "assetID": 647682223,
+    "downloads": 2
   },
-  "total": 106,
+  "total": 2,
   "releases": [
-    {
-      "tag": "build-41096481874",
-      "name": "Cloudified 0.81 Preview",
-      "publishedAt": "2026-10-30T17:33:29Z",
-      "prerelease": true,
-      "assetID": 692883195,
-      "downloads": 6
-    },
-    {
-      "tag": "build-41044058063",
-      "name": "Cloudified 0.8 Preview",
-      "publishedAt": "2026-10-30T11:00:10Z",
-      "prerelease": true,
-      "assetID": 691827965,
-      "downloads": 6
-    },
-    {
-      "tag": "build-40828576876",
-      "name": "Cloudified 0.7 Preview",
-      "publishedAt": "2026-10-29T06:25:06Z",
-      "prerelease": true,
-      "assetID": 687589239,
-      "downloads": 8
-    },
-    {
-      "tag": "build-39800988344",
-      "name": "Cloudified 0.6 Preview",
-      "publishedAt": "2026-10-22T15:08:53Z",
-      "prerelease": true,
-      "assetID": 666207035,
-      "downloads": 6
-    },
-    {
-      "tag": "build-39731681087",
-      "name": "Cloudified 0.5",
-      "publishedAt": "2026-10-22T06:09:27Z",
-      "prerelease": false,
-      "assetID": 664863554,
-      "downloads": 32
-    },
-    {
-      "tag": "build-39627332114",
-      "name": "Cloudified 0.4",
-      "publishedAt": "2026-10-21T15:42:47Z",
-      "prerelease": false,
-      "assetID": 662981533,
-      "downloads": 10
-    },
-    {
-      "tag": "build-39311792832",
-      "name": "Cloudified 0.3",
-      "publishedAt": "2026-10-19T19:37:23Z",
-      "prerelease": false,
-      "assetID": 657234830,
-      "downloads": 9
-    },
-    {
-      "tag": "build-39233571132",
-      "name": "Cloudified 0.2",
-      "publishedAt": "2026-10-19T10:15:44Z",
-      "prerelease": false,
-      "assetID": 655926210,
-      "downloads": 7
-    },
     {
       "tag": "ci-run-38920202426-untested",
       "name": "Cloudified 0.1",
       "publishedAt": "2026-10-16T15:04:00Z",
-      "prerelease": false,
       "assetID": 647682223,
-      "downloads": 22
+      "downloads": 2
     }
   ],
-  "collectedAt": "2026-11-10T19:49:23+00:00"
+  "collectedAt": "2026-10-16T22:20:42+00:00"
 }
