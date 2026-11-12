@@ -6,7 +6,7 @@
 
 Back up iPhone photos and videos to **Google Photos, Telegram, or both**.
 Open source, original quality, and a separate upload queue for each destination.
-By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
+By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.81**
 
 [Download IPA](https://github.com/Voryn-Labs/Cloudified/releases/latest/download/Cloudified-unsigned.ipa) · [Website](https://voryn-labs.github.io/cloudified.html) · [Setup](docs/public/SETUP.md) · [FAQ](docs/public/FAQ.md)
 
@@ -23,18 +23,18 @@ By [Voryn Labs](https://voryn-labs.github.io/). **iOS 26+ · Version 0.5**
 - **Back up your way.** Automatic start on open, iOS background processing, a dim Keep Awake screen, and light/night themes.
 - **Archive large videos.** Oversized Telegram files use byte-exact parts with a reconstruction manifest.
 
-### Latest preview: 0.81
+### Latest stable: 0.81
 
-The [0.81 prerelease](https://github.com/Voryn-Labs/Cloudified/releases) fixes a
+The [0.81 release](https://github.com/Voryn-Labs/Cloudified/releases/latest) fixes a
 Telegram local update-queue overflow that could stall uploads when unrelated
 updates crowded the bounded queue. It preserves Telegram recovery evidence and
 keeps Google uploads independent. It also includes the 0.8 album exclusions and
 Keep Awake redesign.
-Choose **Cloudified Preview** in the same Voryn Labs installer source; the stable
-**Cloudified** card stays on **0.5**. Both use the same bundle ID. Update in place
+The Voryn Labs source lists **Cloudified** stable at **0.81**. The separate
+**Cloudified Preview** card remains available for future previews. Update in place
 with the same signing identity/container. **0.81 upgrades the local database;
 do not downgrade that container to 0.8 or earlier.**
-[Preview details](docs/public/CHANGELOG.md) · [Matching limits](docs/public/FAQ.md#what-changes-in-the-06-preview).
+[Release details](docs/public/CHANGELOG.md) · [Matching limits](docs/public/FAQ.md#what-changes-in-the-06-preview).
 
 ### New in 0.5
 

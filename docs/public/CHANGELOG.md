@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.81 — 2026-10-30
+## 0.81 — 2026-11-12
 
-**Latest preview; stable remains0.5.**
+**Latest stable release.**
 
 - Filter unrelated Telegram chat/file updates before the bounded native queue,
   preventing irrelevant bursts from poisoning upload delivery. Preserve owned
@@ -15,12 +15,12 @@
 - Preserve original media, upload profile, retry limits, receipts and protected
   native files. Unknown outcomes still require verification before another send.
 
-Update in place with the same signing identity/container. This preview advances
+Update in place with the same signing identity/container. This release advances
 the database to schema7; do not downgrade its container to0.8 or earlier.
 
 ## 0.8 — 2026-10-30
 
-**Preview channel. Stable remains0.5.**
+**Preview release.**
 
 - Exclude regular Photos albums separately for Google Photos and Telegram.
   Rules apply before original export and again before sending; existing cloud

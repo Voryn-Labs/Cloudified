@@ -19,7 +19,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>0.81</string>
 	<key>CloudifiedReleaseChannel</key>
-	<string>prerelease</string>
+	<string>stable</string>
 	<key>CloudifiedRevision</key>
 	<string>$(CLOUDIFIED_REVISION)</string>
 	<key>CFBundleVersion</key>

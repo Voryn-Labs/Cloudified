@@ -2,7 +2,7 @@
 
 [Back to Cloudified](../../README.md)
 
-## Can I exclude an album? (preview)
+## Can I exclude an album?
 
 Pause backup → Settings → Excluded albums. Select regular user albums and turn on
 exclusion separately for Google Photos and Telegram; Save, then resume. Membership
