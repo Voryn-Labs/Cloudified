@@ -7,9 +7,9 @@
     "publishedAt": "2026-11-12T04:06:05Z",
     "prerelease": false,
     "assetID": 738003735,
-    "downloads": 9
+    "downloads": 11
   },
-  "total": 120,
+  "total": 123,
   "releases": [
     {
       "tag": "build-43150178566",
@@ -17,7 +17,7 @@
       "publishedAt": "2026-11-12T04:06:05Z",
       "prerelease": false,
       "assetID": 738003735,
-      "downloads": 9
+      "downloads": 11
     },
     {
       "tag": "build-41096481874",
@@ -25,7 +25,7 @@
       "publishedAt": "2026-10-30T17:33:29Z",
       "prerelease": true,
       "assetID": 692883195,
-      "downloads": 8
+      "downloads": 9
     },
     {
       "tag": "build-41044058063",
@@ -92,5 +92,5 @@
       "downloads": 22
     }
   ],
-  "collectedAt": "2026-11-14T06:37:44+00:00"
+  "collectedAt": "2026-11-16T22:15:05+00:00"
 }
